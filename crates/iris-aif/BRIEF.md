@@ -10,7 +10,8 @@ Write and read a minimal valid AIF file containing:
 - `document.xml` with a single pixel-mode canvas, one artboard, and a flat layer tree
 - `metadata.xml`
 - `iris/layers/{id}/meta.xml` for each layer
-- EXR tiles for pixel layers (8bpc u8, RGBA, ZIP compression)
+- EXR tiles for pixel layers at `SampleType::F16` (not U8 — `TileData` is always
+  f16 in memory; no downconversion performed), RGBA, ZIP compression
 - `preview.png`
 - All content types registered in `[Content_Types].xml`
 
