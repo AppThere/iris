@@ -1,0 +1,16 @@
+[package]
+name        = "iris-vector"
+version     = "0.1.0"
+description = "Vector document model: scene graph, path objects, artboards"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing   = { workspace = true }
+uuid      = { workspace = true }
+appthere-color = { workspace = true }
+iris-ops       = { workspace = true }
+kurbo          = { workspace = true }

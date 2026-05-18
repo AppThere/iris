@@ -1,0 +1,65 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/iris-app",
+    "crates/iris-canvas",
+    "crates/iris-pixel",
+    "crates/iris-vector",
+    "crates/iris-aif",
+    "crates/iris-ops",
+    "crates/iris-psd",
+    "crates/iris-ora",
+    "crates/iris-ai",
+    "crates/iris-svg",
+    "crates/iris-plugin-api",
+    "tools/aif-inspect",
+]
+
+[workspace.package]
+edition      = "2024"
+rust-version = "1.80"
+license      = "Apache-2.0"
+authors      = ["AppThere Project"]
+repository   = "https://github.com/appthere/iris"
+
+# Shared dependency versions — pin once here, reference with {version} = ...
+[workspace.dependencies]
+# AppThere shared crates (path deps until published — swap to version once on crates.io)
+appthere-opc    = { path = "../appthere-opc",    version = "0.1" }
+appthere-canvas = { path = "../appthere-canvas", version = "0.1" }
+appthere-color  = { version = "0.1" }
+
+# Iris internal crates (path deps within this workspace)
+iris-ops        = { path = "crates/iris-ops" }
+iris-pixel      = { path = "crates/iris-pixel" }
+iris-vector     = { path = "crates/iris-vector" }
+iris-aif        = { path = "crates/iris-aif" }
+iris-canvas     = { path = "crates/iris-canvas" }
+
+# External dependencies
+dioxus          = { version = "0.7", features = ["native"] }
+vello           = { version = "0.4" }
+wgpu            = { version = "22" }
+kurbo           = { version = "0.11" }
+parley          = { version = "0.2" }
+loro            = { version = "1" }
+thiserror       = { version = "2" }
+uuid            = { version = "1", features = ["v4"] }
+tracing         = { version = "0.1" }
+lz4_flex        = { version = "0.11" }
+flatbuffers     = { version = "24" }
+# EXR: desktop uses openexr-rs (C++ bindings); mobile uses exr (pure Rust)
+# Feature-gated per platform — see iris-aif/Cargo.toml
+exr             = { version = "1" }
+zip             = { version = "2" }
+quick-xml       = { version = "0.36" }
+serde           = { version = "1", features = ["derive"] }
+proptest        = { version = "1" }
+
+[profile.dev]
+opt-level = 1          # faster compiles, still debuggable
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1

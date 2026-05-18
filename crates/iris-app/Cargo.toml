@@ -1,0 +1,23 @@
+[package]
+name        = "iris-app"
+version     = "0.1.0"
+description = "AppThere Iris — Dioxus Native application shell"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[[bin]]
+name = "iris"
+path = "src/main.rs"
+
+[dependencies]
+iris-canvas     = { workspace = true }
+iris-pixel      = { workspace = true }
+iris-vector     = { workspace = true }
+iris-ops        = { workspace = true }
+iris-aif        = { workspace = true }
+iris-plugin-api = { workspace = true }
+dioxus          = { workspace = true }
+tracing         = { workspace = true }
+uuid            = { workspace = true }

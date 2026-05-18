@@ -1,0 +1,24 @@
+[package]
+name        = "iris-aif"
+version     = "0.1.0"
+description = "Artisan Interchange Format (.aif) read/write"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing   = { workspace = true }
+uuid      = { workspace = true }
+iris-pixel  = { workspace = true }
+iris-vector = { workspace = true }
+iris-ops    = { workspace = true }
+quick-xml   = { workspace = true }
+zip         = { workspace = true }
+flatbuffers = { workspace = true }
+exr         = { workspace = true }
+
+# Desktop EXR (C++ bindings) — enabled by default, disabled on mobile
+# [target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+# openexr-rs = "3"   # Uncomment once appthere-opc gate is open

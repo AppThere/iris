@@ -1,0 +1,16 @@
+[package]
+name        = "iris-svg"
+version     = "0.1.0"
+description = "SVG 1.1 import/export adapter"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing   = { workspace = true }
+uuid      = { workspace = true }
+iris-pixel  = { workspace = true }
+iris-vector = { workspace = true }
+iris-aif    = { workspace = true }

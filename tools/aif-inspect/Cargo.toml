@@ -1,0 +1,16 @@
+[package]
+name        = "aif-inspect"
+version     = "0.1.0"
+description = "CLI tool for inspecting .aif files"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[[bin]]
+name = "aif-inspect"
+path = "src/main.rs"
+
+[dependencies]
+iris-aif  = { workspace = true }
+tracing   = { workspace = true }
