@@ -33,3 +33,4 @@ pub use error::{DeviationWarning, OpcError, OpcResult};
 pub use package::Package;
 pub use part::{PartData, PartName};
 pub use relationships::{Relationship, RelationshipSet, TargetMode};
+pub use ::zip::CompressionMethod;

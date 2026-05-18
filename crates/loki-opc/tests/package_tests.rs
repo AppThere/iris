@@ -14,7 +14,7 @@ fn test_package_round_trip() {
     cp.title = Some("Test Title".to_string());
 
     let mut buffer = std::io::Cursor::new(Vec::new());
-    pkg.write(&mut buffer).unwrap();
+    pkg.write(&mut buffer, None).unwrap();
 
     buffer.set_position(0);
     let mut dbg_bytes = Vec::new();

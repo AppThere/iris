@@ -46,6 +46,10 @@ pub enum AifError {
         source: std::io::Error,
     },
 
+    /// Fatal: OPC container error (malformed ZIP, missing parts, bad content types, etc.).
+    #[error("OPC container error: {0}")]
+    Opc(#[from] loki_opc::OpcError),
+
     /// The file-access permission was revoked by the OS mid-operation.
     #[error("file access permission revoked during operation")]
     PermissionRevoked,

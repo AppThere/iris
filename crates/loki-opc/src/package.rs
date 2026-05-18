@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, Write};
 use std::path::Path;
 
+use zip::CompressionMethod;
+
 use crate::{
     content_types::ContentTypeMap,
     core_properties::CoreProperties,
@@ -73,17 +75,28 @@ impl Package {
     }
 
     /// Write the package to a writer, producing a spec-conformant ZIP.
-    /// Written output always conforms to ISO/IEC 29500-2:2021 regardless
-    /// of the deviation settings used on read.
-    pub fn write(&self, mut writer: impl Write + Seek) -> OpcResult<()> {
-        crate::zip::write::write_package_to_zip(self, &mut writer)
+    ///
+    /// `compression_for` is an optional callback that receives a part's [`PartName`]
+    /// and returns the desired [`CompressionMethod`] for that part.  Structural OPC
+    /// parts (`[Content_Types].xml`, `.rels` files) always use `Deflated` regardless
+    /// of the callback.  Pass `None` to Deflate all parts.
+    pub fn write<W: Write + Seek>(
+        &self,
+        writer: W,
+        compression_for: Option<&dyn Fn(&PartName) -> CompressionMethod>,
+    ) -> OpcResult<()> {
+        crate::zip::write::write_package_to_zip(self, writer, compression_for)
     }
 
     /// Write the package to a file path (requires `std` feature).
     #[cfg(feature = "std")]
-    pub fn write_path(&self, path: impl AsRef<Path>) -> OpcResult<()> {
+    pub fn write_path(
+        &self,
+        path: impl AsRef<Path>,
+        compression_for: Option<&dyn Fn(&PartName) -> CompressionMethod>,
+    ) -> OpcResult<()> {
         let file = std::fs::File::create(path)?;
-        self.write(std::io::BufWriter::new(file))
+        self.write(std::io::BufWriter::new(file), compression_for)
     }
 
     // --- Parts ---
@@ -171,7 +184,8 @@ impl Package {
         if self.core_properties.is_none() {
             self.core_properties = Some(CoreProperties::default());
         }
-        self.core_properties.as_mut().unwrap()
+        // We inserted Some(...) on the line above; this path is unreachable.
+        self.core_properties.as_mut().expect("inserted above")
     }
 
     // --- Thumbnails ---

@@ -19,6 +19,7 @@ zip                  = { workspace = true }
 flatbuffers          = { workspace = true }
 exr                  = { workspace = true }
 appthere-file-access = { workspace = true }
+loki-opc             = { workspace = true, features = ["serde", "strict"] }
 
 # Desktop EXR (C++ bindings) — enabled by default, disabled on mobile
 # [target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]

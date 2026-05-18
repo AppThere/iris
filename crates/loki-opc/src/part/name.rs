@@ -75,15 +75,17 @@ impl PartName {
             }
         }
 
-        Self::new_unchecked(s)
+        Ok(Self::new_unchecked(s))
     }
 
-    /// Extracts structural limits avoiding multiple validation calls internally.
+    /// Constructs a `PartName` from a pre-validated string without re-checking ABNF rules.
     ///
     /// # Safety note
-    /// Used internally when ZIP contents are validated beforehand.
-    pub fn new_unchecked(s: String) -> OpcResult<Self> {
-        Ok(Self(s))
+    /// Used internally when the string is a compile-time constant or has already
+    /// been validated by `new()`. Callers must ensure the string is a valid OPC
+    /// part name per §6.2.2.
+    pub fn new_unchecked(s: String) -> Self {
+        Self(s)
     }
 
     /// Returns the string representation.
@@ -104,16 +106,29 @@ impl PartName {
             Some((d, f)) => (d, f),
             None => ("", name_str),
         };
-        // Unchecked is safe because the parent part was already validated.
-        Self::new_unchecked(format!("{}/_rels/{}.rels", dir, filename)).unwrap()
+        // new_unchecked is infallible; the format string is a valid OPC part name
+        // because the parent PartName was already validated.
+        Self::new_unchecked(format!("{}/_rels/{}.rels", dir, filename))
     }
 }
 
-// Case-insensitive comparisons and hashing per §6.3.5.
+// Case-insensitive comparisons, ordering, and hashing per §6.3.5.
 
 impl PartialEq for PartName {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_ignore_ascii_case(&other.0)
+    }
+}
+
+impl PartialOrd for PartName {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PartName {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.to_ascii_lowercase().cmp(&other.0.to_ascii_lowercase())
     }
 }
 

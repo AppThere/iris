@@ -27,4 +27,9 @@ pub use appthere_file_access::{
     AccessError, FileAccessToken, FilePicker, PickOptions, PickerError, SaveOptions,
 };
 
+// OPC container types re-exported so iris-aif callers never import loki-opc directly.
+pub use loki_opc::{
+    CompressionMethod, OpcError, OpcResult, Package as OpcPackage, PartData, PartName,
+};
+
 // TODO(iris): SPEC.md §4 — AifReader, AifWriter, AifDocument stubs follow in milestone 1
