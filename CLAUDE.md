@@ -166,7 +166,7 @@ Check `ADR/006-shared-canvas-extraction.md` for current status.
 
 | Crate | Gate condition |
 |---|---|
-| `iris-aif` | `appthere-opc` published to crates.io at `>= 0.1.0` |
+| `iris-aif` | loki-opc path dep at `crates/loki-opc/` — GATE OPEN (ADR 008) |
 | `iris-canvas` | `appthere-canvas` published and Loki updated to consume it |
 
 Until gates are open, these crates exist as stubs only (`lib.rs` with a `// TODO` comment).

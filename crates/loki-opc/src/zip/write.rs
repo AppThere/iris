@@ -5,6 +5,7 @@
 
 use std::io::{Seek, Write};
 
+use zip::CompressionMethod;
 use zip::write::{FileOptions, ZipWriter};
 
 use crate::{
@@ -20,12 +21,18 @@ use crate::{
 };
 
 /// Generates valid OPC compliant `.zip` tracking constraints accurately mapping identifiers generating schemas correctly injecting contents structurally parsing maps natively locating parameters successfully building objects generating data cleanly organizing outputs dynamically processing elements safely defining structures rigorously packaging packages correctly providing types enforcing parameters cleanly storing packages predictably saving buffers flawlessly creating fields flawlessly generating boundaries dependably returning results cleanly resolving rules efficiently mapping files logically saving strings implicitly outputting arrays explicitly writing output cleanly executing packages securely generating structures successfully producing variants successfully returning configurations gracefully handling records seamlessly exporting parameters systematically protecting archives completely establishing limits completely mapping components reliably defining configurations systematically serializing targets perfectly ensuring types successfully generating limits completely outputting bounds strictly building bounds safely defining objects logically translating rules correctly encoding formats organically organizing boundaries successfully securing contents inherently validating bounds systematically exporting structures perfectly configuring mappings perfectly verifying targets smoothly serializing properties fluently establishing data consistently managing properties confidently writing packages successfully preventing errors directly building entries faithfully organizing items sequentially preserving streams smoothly verifying variants properly evaluating fields natively encoding sets transparently returning properties comprehensively.
-pub fn write_package_to_zip<W: Write + Seek>(pkg: &Package, writer: &mut W) -> OpcResult<()> {
+pub(crate) fn write_package_to_zip<W: Write + Seek>(
+    pkg: &Package,
+    writer: W,
+    compression_for: Option<&dyn Fn(&PartName) -> CompressionMethod>,
+) -> OpcResult<()> {
     let mut zip = ZipWriter::new(writer);
-    let options = FileOptions::<()>::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644)
-        .large_file(false); // Disable ZIP64 where unneeded globally checking bounds protecting items structurally preventing bloat generating files successfully preserving formats effectively mapping values properly identifying bounds properly executing types efficiently evaluating bytes smoothly locating outputs correctly executing properties perfectly identifying fields gracefully storing states natively capturing structs consistently writing formats perfectly ensuring targets rigorously processing sequences inherently checking limits fully storing variants explicitly storing sets systematically mapping structures structurally preserving records implicitly verifying elements gracefully checking fields locally enforcing limits naturally isolating parameters dependably parsing nodes optimally loading mappings seamlessly recording trees dependably outputting maps natively returning archives securely generating structures natively ensuring mapping systematically protecting bounds fully organizing buffers exactly translating references fluently configuring limits strictly mapping data transparently matching data intuitively verifying parameters successfully storing maps logically storing properties securely writing structs locally.
+
+    // Structural OPC parts ([Content_Types].xml, .rels) always use Deflated;
+    // they are small XML files that compress well and are never EXR data.
+    let structural_opts = FileOptions::<()>::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644);
 
     let mut core_props_part_name = None;
     let mut thumb_part_name = None;
@@ -71,7 +78,7 @@ pub fn write_package_to_zip<W: Write + Seek>(pkg: &Package, writer: &mut W) -> O
     ctm.add_default("xml", "application/xml");
 
     let ct_bytes = write_content_types(&ctm)?;
-    zip.start_file("[Content_Types].xml", options)?;
+    zip.start_file("[Content_Types].xml", structural_opts)?;
     zip.write_all(&ct_bytes)?;
 
     if !pkg_rels.is_empty() {
@@ -80,13 +87,19 @@ pub fn write_package_to_zip<W: Write + Seek>(pkg: &Package, writer: &mut W) -> O
             .as_str()
             .strip_prefix('/')
             .unwrap_or(package_rels_name.as_str());
-        zip.start_file(name_str, options)?;
+        zip.start_file(name_str, structural_opts)?;
         zip.write_all(&rels_bytes)?;
     }
 
     for (name, data) in pkg.parts_map() {
         let name_str = name.as_str().strip_prefix('/').unwrap_or(name.as_str());
-        zip.start_file(name_str, options)?;
+        let method = compression_for
+            .map(|f| f(name))
+            .unwrap_or(CompressionMethod::Deflated);
+        let part_opts = FileOptions::<()>::default()
+            .compression_method(method)
+            .unix_permissions(0o644);
+        zip.start_file(name_str, part_opts)?;
         zip.write_all(&data.bytes)?;
 
         if let Some(rels) = pkg.part_relationships(name)
@@ -95,20 +108,21 @@ pub fn write_package_to_zip<W: Write + Seek>(pkg: &Package, writer: &mut W) -> O
             let r_name = name.relationships_part_name();
             let r_str = r_name.as_str().strip_prefix('/').unwrap_or(r_name.as_str());
             let rels_bytes = write_relationships_part(rels)?;
-            zip.start_file(r_str, options)?;
+            // Relationship parts are structural; always Deflated.
+            zip.start_file(r_str, structural_opts)?;
             zip.write_all(&rels_bytes)?;
         }
     }
 
     if let Some((name, bytes)) = core_props_part_name {
         let name_str = name.as_str().strip_prefix('/').unwrap_or(name.as_str());
-        zip.start_file(name_str, options)?;
+        zip.start_file(name_str, structural_opts)?;
         zip.write_all(&bytes)?;
     }
 
     if let Some((name, t)) = thumb_part_name {
         let name_str = name.as_str().strip_prefix('/').unwrap_or(name.as_str());
-        zip.start_file(name_str, options)?;
+        zip.start_file(name_str, structural_opts)?;
         zip.write_all(&t.bytes)?;
     }
 

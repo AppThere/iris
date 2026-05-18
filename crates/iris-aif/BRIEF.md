@@ -1,6 +1,8 @@
 ## `iris-aif` — Artisan Interchange Format read/write
 
-**Gate:** `appthere-opc >= 0.1.0` published; `iris-pixel` milestone complete.
+**Gate:** OPEN — loki-opc path dep at `crates/loki-opc/` satisfies the OPC container
+requirement (ADR 008). `iris-pixel` milestone must still be complete before
+implementing the full layer-tree round-trip test.
 
 ### Phase 1 milestone
 
@@ -8,7 +10,8 @@ Write and read a minimal valid AIF file containing:
 - `document.xml` with a single pixel-mode canvas, one artboard, and a flat layer tree
 - `metadata.xml`
 - `iris/layers/{id}/meta.xml` for each layer
-- EXR tiles for pixel layers (8bpc u8, RGBA, ZIP compression)
+- EXR tiles for pixel layers at `SampleType::F16` (not U8 — `TileData` is always
+  f16 in memory; no downconversion performed), RGBA, ZIP compression
 - `preview.png`
 - All content types registered in `[Content_Types].xml`
 
@@ -74,6 +77,38 @@ impl AifWriter {
 // Full AifError taxonomy — all variants as specified in SPEC.md §4.15
 pub use error::AifError;
 ```
+
+## OPC container
+
+iris-aif uses loki-opc (at `crates/loki-opc/`) for all OPC/ZIP container operations.
+The crate is depended on with features `["serde", "strict"]`. Public API surface
+relevant to iris-aif:
+
+```rust
+Package::new()                             // create empty container
+Package::open(impl Read + Seek)            // open existing .aif
+Package::write(w, compression_fn)          // write with per-part compression
+Package::set_part(PartName, PartData)      // add/replace a part
+Package::part(&PartName)                   // read a part by URI
+Package::part_names()                      // enumerate all parts
+Package::content_type_map_mut()            // register MIME types
+Package::relationships_mut()               // write root relationships
+CompressionMethod                          // Stored | Deflated (re-exported)
+```
+
+**Per-part compression rule** (enforced in `writer.rs`, never in `parts.rs`):
+
+- EXR tile parts (`.exr`) → `CompressionMethod::Stored`
+- All other parts → `CompressionMethod::Deflated`
+
+All OPC part URI string constants live in `src/parts.rs` exclusively. No part URI
+strings may be hardcoded in `reader.rs`, `writer.rs`, `xml.rs`, or `tile.rs`.
+This isolates the OPC vocabulary so a future backend swap requires only `parts.rs`
+changes.
+
+iris-aif enables the `strict` loki-opc feature for reading third-party OPC files.
+Deviation warnings from first-party `.aif` reads are logged via `tracing::warn!`
+and do not return errors.
 
 ## File access
 

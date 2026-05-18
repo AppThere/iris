@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["crates/loki-file-access"]
+exclude = ["crates/loki-file-access", "crates/loki-opc"]
 members = [
     "crates/iris-app",
     "crates/iris-canvas",
@@ -30,6 +30,7 @@ appthere-opc         = { path = "../appthere-opc",    version = "0.1" }
 appthere-canvas      = { path = "../appthere-canvas", version = "0.1" }
 appthere-color       = { version = "0.1" }
 appthere-file-access = { package = "loki-file-access", path = "crates/loki-file-access" }
+loki-opc             = { path = "crates/loki-opc", features = ["serde"] }
 
 # Iris internal crates (path deps within this workspace)
 iris-ops        = { path = "crates/iris-ops" }

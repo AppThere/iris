@@ -6,7 +6,9 @@
 mod parse;
 mod write;
 
-use std::collections::HashMap;
+// BTreeMap chosen over HashMap for deterministic [Content_Types].xml
+// serialisation order. Required for reproducible OPC container output.
+use std::collections::BTreeMap;
 
 use crate::part::PartName;
 
@@ -16,8 +18,8 @@ pub use write::write_content_types;
 /// Content type tracking structure defining explicit URI targets resolving strictly matching components.
 #[derive(Debug, Clone, Default)]
 pub struct ContentTypeMap {
-    defaults: HashMap<String, String>,
-    overrides: HashMap<PartName, String>,
+    defaults: BTreeMap<String, String>,
+    overrides: BTreeMap<PartName, String>,
 }
 
 impl ContentTypeMap {
@@ -50,12 +52,12 @@ impl ContentTypeMap {
     }
 
     /// Provide underlying maps iterating outputs dynamically serializing properties mapping files.
-    pub(crate) fn defaults(&self) -> &HashMap<String, String> {
+    pub(crate) fn defaults(&self) -> &BTreeMap<String, String> {
         &self.defaults
     }
 
     /// Extract configuration overrides internally binding path parameters identifying parts implicitly.
-    pub(crate) fn overrides(&self) -> &HashMap<PartName, String> {
+    pub(crate) fn overrides(&self) -> &BTreeMap<PartName, String> {
         &self.overrides
     }
 }

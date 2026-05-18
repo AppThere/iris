@@ -16,9 +16,13 @@ iris-vector          = { workspace = true }
 iris-ops             = { workspace = true }
 quick-xml            = { workspace = true }
 zip                  = { workspace = true }
+# Phase 3 forward reference — vector path store (paths.bin). Unused in
+# Phase 1. Not imported in any Phase 1 source file; no compiler warning
+# is generated for unused deps without #[deny(unused_crate_dependencies)].
 flatbuffers          = { workspace = true }
 exr                  = { workspace = true }
 appthere-file-access = { workspace = true }
+loki-opc             = { workspace = true, features = ["serde", "strict"] }
 
 # Desktop EXR (C++ bindings) — enabled by default, disabled on mobile
 # [target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]

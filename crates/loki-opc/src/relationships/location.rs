@@ -13,10 +13,12 @@ pub fn relationships_part_for(part: &PartName) -> PartName {
         None => ("", name_str),
     };
     // Format: directory/_rels/filename.rels
-    PartName::new_unchecked(format!("{}/_rels/{}.rels", dir, filename)).unwrap()
+    // new_unchecked is infallible; the format string is a valid OPC part name.
+    PartName::new_unchecked(format!("{}/_rels/{}.rels", dir, filename))
 }
 
 /// Package top level configuration relationships mapping struct definition.
 pub fn package_relationships_part() -> PartName {
-    PartName::new_unchecked("/_rels/.rels".to_string()).unwrap()
+    // new_unchecked is infallible; "/_rels/.rels" is a valid OPC part name.
+    PartName::new_unchecked("/_rels/.rels".to_string())
 }

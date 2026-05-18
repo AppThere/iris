@@ -46,6 +46,23 @@ pub enum AifError {
         source: std::io::Error,
     },
 
+    /// Fatal: OPC container error (malformed ZIP, missing parts, bad content types, etc.).
+    #[error("OPC container error: {0}")]
+    Opc(#[from] loki_opc::OpcError),
+
+    /// Fatal: EXR tile encoding failed during write.
+    #[error("EXR encode error writing layer {layer_id} tile ({tx},{ty}): {message}")]
+    ExrEncode {
+        /// UUID of the layer whose tile failed to encode.
+        layer_id: uuid::Uuid,
+        /// Tile column index.
+        tx: u32,
+        /// Tile row index.
+        ty: u32,
+        /// Description of the EXR error.
+        message: String,
+    },
+
     /// The file-access permission was revoked by the OS mid-operation.
     #[error("file access permission revoked during operation")]
     PermissionRevoked,

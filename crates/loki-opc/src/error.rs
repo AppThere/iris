@@ -73,7 +73,7 @@ pub enum OpcError {
     },
 
     /// Refused handling access to digital signatures intentionally.
-    #[error("digital signatures are not supported in loki-opc v0.1.0 (§10)")]
+    #[error("digital signatures are not supported in this OPC implementation (§10)")]
     DigitalSignaturesNotSupported,
 
     /// Indicated when a searched logical name cannot map to physical assets directly.
