@@ -17,28 +17,32 @@
 mod desktop;
 #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
 pub(crate) use desktop::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, open_read, open_write, open_write_truncate, pick_open_multi,
+    pick_open_single, pick_save,
 };
 
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
 pub(crate) use android::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, open_read, open_write, open_write_truncate, pick_open_multi,
+    pick_open_single, pick_save,
 };
 
 #[cfg(target_os = "ios")]
 mod ios;
 #[cfg(target_os = "ios")]
 pub(crate) use ios::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, open_read, open_write, open_write_truncate, pick_open_multi,
+    pick_open_single, pick_save,
 };
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use wasm::{
-    check_permission, open_read, open_write, pick_open_multi, pick_open_single, pick_save,
+    check_permission, open_read, open_write, open_write_truncate, pick_open_multi,
+    pick_open_single, pick_save,
 };
 
 // Ensure a compile error on unsupported platforms rather than silent failure.

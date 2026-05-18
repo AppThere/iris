@@ -75,13 +75,39 @@ impl AifWriter {
 pub use error::AifError;
 ```
 
+## File access
+
+`iris-aif` uses `appthere-file-access` (package: `loki-file-access`) for all
+file I/O on all platforms.
+
+API shape (from PROMPT 2C audit + PROMPT 2D additions):
+
+- `FilePicker` (zero-size struct) with async `pick_file_to_open` / `pick_file_to_save`
+- `FileAccessToken` with:
+  - `open_read() -> Box<dyn ReadSeek>` — streaming, seekable
+  - `open_write_truncate() -> Box<dyn WriteSeek>` — overwrites from byte 0 (added PROMPT 2D)
+  - `serialize() / deserialize()` — URL-safe base64 for recent-files storage
+- No public platform trait — dispatch is `cfg`-gated inside the crate
+
+`AifReader::open` accepts:
+- `&FileAccessToken` on all platforms (primary API)
+- `&std::path::Path` on desktop only (convenience; returns `AifError::PathAccessDenied` on mobile)
+
+`AifWriter::write` accepts the same two variants.  
+Tests always use the `&Path` variant (desktop host; no picker needed in tests).
+
+Decisions encoded in PROMPT 2D:
+- Desktop overwrites use `open_write_truncate()` — not `open_write()`
+- iOS and WASM writes return `AccessError::Platform` (stub) until fully implemented
+- WASM read is functional (in-memory `Cursor`); WASM write is not supported yet
+- Android read and write are functional via SAF + `ContentResolver`
+
 ### Do not implement yet
 
 - Op log read/write (Phase 1 milestone 2 — requires `iris-ops` Loro integration)
 - Vector path store (`paths.bin`) read/write (Phase 3)
 - Asset parts: brushes, patterns (Phase 4)
 - ICC profile embedding beyond well-known colour spaces (Phase 4)
-- Mobile `AsyncReadWrite` platform abstraction (Phase 1 mobile milestone)
 
 ### Test requirements
 

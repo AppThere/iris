@@ -102,6 +102,13 @@ impl FileAccessToken {
         crate::platform::open_write(&self.inner)
     }
 
+    /// Open the file for writing and truncate to zero length before returning.
+    /// Prefer this over `open_write` when creating or fully overwriting a file.
+    #[must_use = "this returns a Result that may contain an error"]
+    pub fn open_write_truncate(&self) -> Result<Box<dyn WriteSeek>, AccessError> {
+        crate::platform::open_write_truncate(&self.inner)
+    }
+
     /// Returns the user-visible display name of the file (typically the filename).
     #[must_use]
     pub fn display_name(&self) -> &str {

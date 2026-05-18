@@ -143,6 +143,15 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
     }
 }
 
+/// Open a content URI for writing, truncating to zero length before returning.
+///
+/// # Platform note
+// COMPAT(mobile): Android "w" mode truncates implicitly — ContentResolver
+// openFileDescriptor with mode "w" replaces content, so this delegates to open_write.
+pub(crate) fn open_write_truncate(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
+    open_write(inner)
+}
+
 /// Check whether a persistable URI permission is still held.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {
@@ -164,6 +173,26 @@ pub fn on_activity_result(uri: Option<String>) {
     }
 }
 
+/// Deliver multiple URI results from Android `onActivityResult` to a pending
+/// `pick_files_to_open` future.  Call this from the JNI bridge when
+/// `EXTRA_ALLOW_MULTIPLE` was set on the Intent.
+///
+/// The existing [`on_activity_result`] is unchanged and continues to serve
+/// single-file results for Loki compatibility.
+///
+/// # Current limitation
+///
+/// Full multi-file support requires changing the `PENDING_PICK` state type to
+/// `Vec<String>`, which is a breaking change for existing Loki JNI bridges.
+// TODO(iris): loki-file-access Android — full multi-file PENDING_PICK state
+// change tracked in gap list; see PROMPT 2C §6 Android item 1.
+pub fn on_activity_result_multi(uris: Vec<String>) {
+    // Deliver only the first URI to avoid silent data loss.
+    // A full implementation requires PENDING_PICK to hold Vec<String>.
+    let first = uris.into_iter().next();
+    on_activity_result(first);
+}
+
 /// Store the shared state for the in-flight pick operation.
 fn store_pending(
     state: Arc<Mutex<crate::future::PickState<Option<String>>>>,
@@ -171,8 +200,24 @@ fn store_pending(
     let mut guard = pending_pick().lock().map_err(|e| PickerError::Internal {
         message: e.to_string(),
     })?;
+    // SAFETY(concurrency): guard against concurrent pick invocations.
+    if let Some(ref existing) = *guard {
+        let in_flight = existing.lock().map(|s| s.result.is_none()).unwrap_or(false);
+        if in_flight {
+            return Err(PickerError::Internal {
+                message: "a file pick operation is already in progress; await the previous pick before starting a new one".into(),
+            });
+        }
+    }
     *guard = Some(state);
     Ok(())
+}
+
+/// Clear the pending pick state after a pick operation completes.
+fn clear_pending() {
+    if let Ok(mut guard) = pending_pick().lock() {
+        *guard = None;
+    }
 }
 
 /// Launch `ACTION_OPEN_DOCUMENT` and await the result.
@@ -183,7 +228,9 @@ async fn launch_open_intent(
     let (future, state) = new_pick_future::<Option<String>>();
     store_pending(state)?;
     jni_intents::fire_open_document_intent(options, allow_multiple)?;
-    Ok(future.await)
+    let result = future.await;
+    clear_pending();
+    Ok(result)
 }
 
 /// Launch `ACTION_CREATE_DOCUMENT` and await the result.
@@ -193,5 +240,7 @@ async fn launch_create_intent(
     let (future, state) = new_pick_future::<Option<String>>();
     store_pending(state)?;
     jni_intents::fire_create_document_intent(options)?;
-    Ok(future.await)
+    let result = future.await;
+    clear_pending();
+    Ok(result)
 }

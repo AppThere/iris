@@ -29,6 +29,12 @@ use crate::token::{
     FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek,
 };
 
+// WASM is single-threaded; Cell<bool> suffices for reentrancy detection.
+// SAFETY(concurrency): guard against concurrent pick invocations.
+thread_local! {
+    static PICK_IN_FLIGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Pick a single file for reading.
 pub(crate) async fn pick_open_single(
     options: PickOptions,
@@ -76,16 +82,21 @@ pub(crate) fn open_read(inner: &TokenInner) -> Result<Box<dyn ReadSeek>, AccessE
     }
 }
 
-/// Open a WASM token for writing (writes to an in-memory buffer).
-pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
-    match inner {
-        TokenInner::Wasm { data, .. } => {
-            Ok(Box::new(std::io::Cursor::new(data.clone())))
-        }
-        _ => Err(AccessError::Platform {
-            message: "non-WASM token on WASM platform".into(),
-        }),
-    }
+/// WASM file writing is not supported; writes to in-memory buffers are silently
+/// discarded and there is no mechanism to retrieve them or trigger a download.
+// TODO(iris): loki-file-access WASM write model deferred — Q1 decision
+pub(crate) fn open_write(_inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
+    Err(AccessError::Platform {
+        message: "WASM file writing is not yet supported".into(),
+    })
+}
+
+/// WASM write truncate is not supported for the same reason as open_write.
+// TODO(iris): loki-file-access WASM write model deferred — Q1 decision
+pub(crate) fn open_write_truncate(_inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
+    Err(AccessError::Platform {
+        message: "open_write_truncate: WASM write not supported — see Q1 decision".into(),
+    })
 }
 
 /// WASM tokens are always valid while the page is loaded.
@@ -103,6 +114,14 @@ async fn pick_files(
 ) -> Result<Vec<FileAccessToken>, PickerError> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
+
+    // SAFETY(concurrency): guard against concurrent pick invocations.
+    let already = PICK_IN_FLIGHT.with(|f| {
+        if f.get() { true } else { f.set(true); false }
+    });
+    if already {
+        return Err(PickerError::Internal { message: "a file pick operation is already in progress; await the previous pick before starting a new one".into() });
+    }
 
     let window = web_sys::window().ok_or_else(|| PickerError::Platform {
         message: "no global window object".into(),
@@ -187,5 +206,6 @@ async fn pick_files(
         });
     }
 
+    PICK_IN_FLIGHT.with(|f| f.set(false));
     Ok(tokens)
 }

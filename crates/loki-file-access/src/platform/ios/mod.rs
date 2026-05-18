@@ -83,6 +83,19 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
     }
 }
 
+/// Open a bookmarked file for writing, truncating to zero length.
+// TODO(iris): loki-file-access iOS — implement after UIDocumentPickerViewController
+pub(crate) fn open_write_truncate(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
+    match inner {
+        TokenInner::Ios { .. } => Err(AccessError::Platform {
+            message: "open_write_truncate: iOS not yet implemented — see loki-file-access iOS gap list".into(),
+        }),
+        _ => Err(AccessError::Platform {
+            message: "non-iOS token on iOS platform".into(),
+        }),
+    }
+}
+
 /// Check whether a bookmark is still resolvable.
 pub(crate) fn check_permission(inner: &TokenInner) -> PermissionStatus {
     match inner {

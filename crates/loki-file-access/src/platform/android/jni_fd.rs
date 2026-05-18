@@ -13,6 +13,9 @@ pub(in crate::platform) fn check_persisted_permission(
     uri: &str,
 ) -> Result<PermissionStatus, PickerError> {
     let ctx = ndk_context::android_context();
+    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
+    // runtime via `JNI_OnLoad`. It is valid for the lifetime of the process
+    // and is not freed by this call.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
         .map_err(super::jni_intents::jvm_err)?;
     let mut env = vm
@@ -78,6 +81,9 @@ pub(in crate::platform) fn check_persisted_permission(
 /// Open a file descriptor for a content URI via `ContentResolver`.
 pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessError> {
     let ctx = ndk_context::android_context();
+    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
+    // runtime via `JNI_OnLoad`. It is valid for the lifetime of the process
+    // and is not freed by this call.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
         .map_err(|_| access_err("get JavaVM"))?;
     let mut env = vm
@@ -89,6 +95,8 @@ pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessE
         .new_string(mode)
         .map_err(|_| access_err("mode string"))?;
 
+    // SAFETY: `ctx.context()` is a non-null `jobject` pointing to the current
+    // Android Activity, valid for the lifetime of the activity and not freed here.
     let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
     let resolver = env
         .call_method(
