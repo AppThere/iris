@@ -1,67 +1,13 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
-//! [`LayerTree`] — authoritative in-memory document layer tree.
-
-use std::collections::BTreeMap;
-
 use crate::layer::{Layer, LayerContent, LayerId};
 
-/// Internal: where a layer is attached in the tree.
-enum ParentLocation {
-    Root,
-    Group(LayerId),
-}
-
-/// In-memory document layer tree with canvas metadata.
-///
-/// All layers live in a flat [`BTreeMap`]; tree structure is encoded by
-/// `LayerContent::Group` child-ID lists. Root-level layers are in `root_ids`.
-// BTreeMap chosen over HashMap for deterministic iteration order (CLAUDE.md).
-#[derive(Debug)]
-pub struct LayerTree {
-    /// Canvas width in pixels.
-    pub canvas_width: u32,
-    /// Canvas height in pixels.
-    pub canvas_height: u32,
-    /// Horizontal dots-per-inch.
-    pub dpi_x: f32,
-    /// Vertical dots-per-inch.
-    pub dpi_y: f32,
-    layers: BTreeMap<LayerId, Layer>,
-    root_ids: Vec<LayerId>,
-}
+use super::{LayerTree, LayerTreeError, ParentLocation};
 
 impl LayerTree {
-    /// Create an empty layer tree with the given canvas dimensions.
-    pub fn new(canvas_width: u32, canvas_height: u32, dpi_x: f32, dpi_y: f32) -> Self {
-        Self {
-            canvas_width,
-            canvas_height,
-            dpi_x,
-            dpi_y,
-            layers: BTreeMap::new(),
-            root_ids: Vec::new(),
-        }
-    }
-
-    /// Ordered slice of root-level layer IDs (index 0 = topmost).
-    pub fn root_layer_ids(&self) -> &[LayerId] {
-        &self.root_ids
-    }
-
-    /// Immutable access to a layer by ID.
-    pub fn get(&self, id: LayerId) -> Option<&Layer> {
-        self.layers.get(&id)
-    }
-
-    /// Mutable access to a layer by ID.
-    pub fn get_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
-        self.layers.get_mut(&id)
-    }
-
     /// Find where `id` is parented. O(n) — no back-references in Phase 1.
-    fn find_parent(&self, id: LayerId) -> Option<ParentLocation> {
+    pub(super) fn find_parent(&self, id: LayerId) -> Option<ParentLocation> {
         if self.root_ids.contains(&id) {
             return Some(ParentLocation::Root);
         }
@@ -76,7 +22,7 @@ impl LayerTree {
     }
 
     /// Returns `true` if `candidate` is anywhere inside the subtree rooted at `ancestor`.
-    fn is_in_subtree(&self, ancestor: LayerId, candidate: LayerId) -> bool {
+    pub(super) fn is_in_subtree(&self, ancestor: LayerId, candidate: LayerId) -> bool {
         let mut stack = vec![ancestor];
         while let Some(id) = stack.pop() {
             if id == candidate {
@@ -130,7 +76,6 @@ impl LayerTree {
     /// Descendants are collected recursively so no orphaned entries remain.
     // TODO(iris): SPEC.md §3 — Phase 5: snapshot full subtree for iris-ops undo.
     pub fn remove_layer(&mut self, id: LayerId) -> Result<Layer, LayerTreeError> {
-        // BFS to collect the full subtree.
         let mut to_remove = vec![id];
         let mut i = 0;
         while i < to_remove.len() {
@@ -141,7 +86,6 @@ impl LayerTree {
             }
             i += 1;
         }
-        // Detach the root of the removed subtree from its parent.
         match self.find_parent(id).ok_or(LayerTreeError::NotFound(id))? {
             ParentLocation::Root => self.root_ids.retain(|&x| x != id),
             ParentLocation::Group(pid) => {
@@ -179,7 +123,6 @@ impl LayerTree {
                 return Err(LayerTreeError::NotFound(np));
             }
         }
-        // Detach from current parent.
         match self.find_parent(id).ok_or(LayerTreeError::NotFound(id))? {
             ParentLocation::Root => self.root_ids.retain(|&x| x != id),
             ParentLocation::Group(pid) => {
@@ -190,7 +133,6 @@ impl LayerTree {
                 }
             }
         }
-        // Attach at new location.
         match new_parent {
             None => {
                 if new_position > self.root_ids.len() {
@@ -232,20 +174,6 @@ impl LayerTree {
     pub fn iter_depth_first(&self) -> impl Iterator<Item = &Layer> + '_ {
         self.dfs_ids().into_iter().filter_map(|id| self.layers.get(&id))
     }
-}
-
-/// Errors produced by [`LayerTree`] mutation operations.
-#[derive(Debug, thiserror::Error)]
-pub enum LayerTreeError {
-    /// No layer with the given ID exists in the tree.
-    #[error("layer {0} not found")]
-    NotFound(LayerId),
-    /// The requested move would create a cycle in the tree.
-    #[error("cannot move layer {0} into its own descendant")]
-    CircularMove(LayerId),
-    /// The requested insertion index exceeds the current child-list length.
-    #[error("position {0} out of range")]
-    PositionOutOfRange(usize),
 }
 
 #[cfg(test)]
