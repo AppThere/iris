@@ -107,7 +107,7 @@ impl LayerSnapshot {
 // TODO(iris): SPEC.md §3 — confirm canonical ownership. iris-pixel/BRIEF.md also
 // defines TileCoord; once iris-pixel is implemented it should re-export this type
 // from iris-ops (audit §6.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TileCoord {
     /// Horizontal tile index (column).
     pub tx: u32,
