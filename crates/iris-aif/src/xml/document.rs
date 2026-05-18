@@ -13,7 +13,7 @@ use crate::{
     error::AifError,
     parts::{AIF_FORMAT_VERSION, AIF_MAJOR, IRIS_EXT_NS, IRIS_NS},
     xml::helpers::{
-        local_name, optional_attr, parse_f32, parse_i32, parse_u32, parse_uuid, qualified_name,
+        local_name, parse_f32, parse_i32, parse_u32, parse_uuid, qualified_name,
         required_attr, xml_escape,
     },
 };
@@ -22,6 +22,8 @@ use iris_pixel::{BitDepth, Layer, LayerContent, LayerTree};
 /// A parsed `<iris:Layer>` entry from `document.xml`.
 pub(crate) struct LayerTreeEntry {
     pub id: Uuid,
+    // TODO(iris): SPEC.md §4.6 — validate layer_type against meta.xml in Phase 3.
+    #[allow(dead_code)]
     pub layer_type: String,
     pub order: u32,
 }

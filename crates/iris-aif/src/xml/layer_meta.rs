@@ -38,12 +38,16 @@ pub(crate) enum LayerContentSpec {
     Pixel(PixelDataSpec),
     Group,
     /// Per §4.16 rule 4: unknown type treated as Group with a warning.
+    // The String is the original type name logged via tracing::warn! during parse.
+    #[allow(dead_code)]
     UnknownFallback(String),
 }
 
 /// Decoded `<iris:PixelData>` element.
 #[derive(Debug)]
 pub(crate) struct PixelDataSpec {
+    // Validated during parse (must equal 256 for AIF 1.0); stored for future versions.
+    #[allow(dead_code)]
     pub tile_size: u32,
     pub channel_layout: ChannelLayout,
     pub color_space: String,

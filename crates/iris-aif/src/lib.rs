@@ -17,9 +17,8 @@
 //!
 //! All file I/O is performed via [`appthere_file_access`]. Callers obtain a
 //! [`FileAccessToken`] from [`FilePicker`] and pass it to
-//! `AifReader::open_token` / `AifWriter::write_token`. On desktop a
-//! convenience `&Path` API is also available; it returns
-//! [`AifError::PathAccessDenied`] on sandboxed platforms (iOS, Android).
+//! [`reader::AifReader::open_token`] / [`writer::AifWriter::write_token`].
+//! On desktop a convenience `Read + Seek` API is also available.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -29,16 +28,17 @@ pub mod error;
 pub mod parts;
 pub(crate) mod xml;
 pub(crate) mod meta;
-// Modules added in PROMPT 3C:
-// pub(crate) mod tile;
-// pub(crate) mod preview;
-// pub mod reader;
-// pub mod writer;
+pub(crate) mod tile;
+pub(crate) mod preview;
+pub mod reader;
+pub mod writer;
 
 // ── Primary type re-exports ───────────────────────────────────────────────────
 
 pub use document::{AifArtboard, AifCanvas, AifDocument, CanvasMode};
 pub use error::AifError;
+pub use reader::AifReader;
+pub use writer::{AifWriter, WriteOptions};
 
 // ── OPC surface re-export ─────────────────────────────────────────────────────
 
@@ -51,5 +51,3 @@ pub use loki_opc::CompressionMethod;
 pub use appthere_file_access::{
     AccessError, FileAccessToken, FilePicker, PickOptions, PickerError, SaveOptions,
 };
-
-// TODO(iris): SPEC.md §4 — AifReader and AifWriter re-exported in PROMPT 3C

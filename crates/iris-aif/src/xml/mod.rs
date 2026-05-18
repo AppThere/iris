@@ -23,8 +23,6 @@ pub(crate) mod meta_doc;
 // ── Re-exports used by reader.rs and writer.rs (PROMPT 3C) ───────────────────
 
 pub(crate) use document::{read_document_xml, write_document_xml, LayerTreeEntry};
-pub(crate) use layer_meta::{read_layer_meta_xml, LayerContentSpec, LayerMetaSpec, PixelDataSpec};
+pub(crate) use layer_meta::{read_layer_meta_xml, LayerMetaSpec};
 pub(crate) use layer_meta_write::{layer_from_spec, write_layer_meta_xml};
-pub(crate) use meta_doc::{
-    read_metadata_xml, write_metadata_xml, DocumentMetadata, SessionInfo,
-};
+pub(crate) use meta_doc::{read_metadata_xml, write_metadata_xml, DocumentMetadata, SessionInfo};
