@@ -13,3 +13,12 @@ tracing   = { workspace = true }
 uuid      = { workspace = true }
 iris-pixel  = { workspace = true }
 iris-vector = { workspace = true }
+
+# Platform-tiered wasmtime — Phase 5 only (ADR 005)
+# Desktop + Android: full Cranelift JIT
+# [target.'cfg(not(target_os = "ios"))'.dependencies]
+# wasmtime = { version = "25", features = ["cranelift", "component-model"] }
+
+# iOS: Pulley interpreter, no JIT (Option A — blocked on track record)
+# [target.'cfg(target_os = "ios")'.dependencies]
+# wasmtime = { version = "25", default-features = false, features = ["pulley", "component-model"] }

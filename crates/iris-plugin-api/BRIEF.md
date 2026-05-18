@@ -1,16 +1,26 @@
-## `iris-plugin-api` — WASI plugin sandbox
+# iris-plugin-api — Implementation Brief
 
-**Gate:** Phase 5 only.
+See SPEC.md §9 and ADR/005-plugin-wasi.md before implementing.
 
-### Phase 1 milestone (pre-gate stub only)
+## Current milestone
 
-No implementation. Crate defines the trait surface only:
+**Phase 1–4: Stub only. Phase 5: Full WASI implementation.**
 
-```rust
-pub trait IrisPlugin: Send + Sync {
-    fn name(&self) -> &str;
-    fn version(&self) -> &str;
-}
-```
+Phase 1 goal: define the trait boundary and iOS cfg gate so the dependency
+graph and platform-tiering are correct from the first commit. No wasmtime
+dependency. No WASM loading.
 
-Everything else is a stub with `// TODO(iris): SPEC.md §9 — Phase 5`.
+## Phase 1 public API
+
+See src/lib.rs — already implemented as part of the platform-tiering change.
+
+## Do not implement yet
+
+- wasmtime dependency (Phase 5)
+- Plugin loading, sandboxing, hook dispatch (Phase 5)
+- Plugin manifest (plugin.toml) parsing (Phase 5)
+- Filter, LayerEffect, Import, Export, Panel hook types (Phase 5)
+
+## Test requirements
+
+Phase 1: one test only — iris_plugin_is_object_safe. Already in src/lib.rs.

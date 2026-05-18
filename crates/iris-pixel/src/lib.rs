@@ -1,11 +1,28 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
-//! Raster document model: layer stack, channels, tile cache
+//! Raster document model: in-memory layer tree with pixel tile storage.
 //!
-//! See SPEC.md and crates/iris-pixel/BRIEF.md before implementing.
+//! See ADR/001-pixel-vector-unified-canvas.md, ADR/003-color-pipeline.md,
+//! and `crates/iris-pixel/BRIEF.md` before implementing.
+//!
+//! **Phase 1:** layer tree, pixel tile cache, blend mode enum.
+//! **Phase 3:** vector and text layer content.
+//! **Phase 4:** adjustment layers, fill layers, CMYK, smart objects.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-// TODO(iris): SPEC.md §<section> — stub only; implementation gated on milestone plan
+mod blend;
+mod color_space;
+mod layer;
+mod pixel_layer;
+mod tile;
+mod tree;
+
+pub use blend::BlendMode;
+pub use color_space::{ColorSpaceId, CMYK_GENERIC, DISPLAY_P3, LINEAR_SRGB, PROPHOTO_RGB, SRGB};
+pub use layer::{Layer, LayerContent, LayerId, LayerMask, LayerProp, PropValue};
+pub use pixel_layer::{BitDepth, ChannelLayout, CropBounds, ExrCompression, PixelLayer};
+pub use tile::{TileCache, TileCoord, TileData, TILE_SIZE};
+pub use tree::{LayerTree, LayerTreeError};

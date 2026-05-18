@@ -11,4 +11,6 @@ authors.workspace     = true
 thiserror = { workspace = true }
 tracing   = { workspace = true }
 uuid      = { workspace = true }
+lz4_flex  = { workspace = true }
+# TODO(iris): ADR/004-crdt-op-log.md — Phase 5: wire LoroDoc for CRDT collaboration.
 loro = { workspace = true }
