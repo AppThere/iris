@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 AppThere
+//
+// SAFETY(policy): This crate contains unsafe code in its Android JNI and
+// iOS Objective-C bridge layers. An ADR exemption is documented in
+// iris/ADR/007-file-access-unsafe-exemption.md. The unsafe surface is
+// limited to platform FFI boundaries. A future loki-file-access-sys split
+// is deferred — see that ADR for conditions.
+// #![forbid(unsafe_code)] is intentionally absent from this crate.
 
 //! # loki-file-access
 //!

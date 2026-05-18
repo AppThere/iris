@@ -25,9 +25,14 @@
 mod filters;
 use filters::{is_valid_extension, mime_types_to_extensions};
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::api::{PickOptions, SaveOptions};
 use crate::error::{AccessError, PickerError};
 use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, WriteSeek};
+
+// SAFETY(concurrency): guard against concurrent pick invocations.
+static PICK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 /// Pick a single file for reading.
 ///
@@ -57,6 +62,9 @@ use crate::token::{FileAccessToken, PermissionStatus, ReadSeek, TokenInner, Writ
 pub(crate) async fn pick_open_single(
     options: PickOptions,
 ) -> Result<Option<FileAccessToken>, PickerError> {
+    if PICK_IN_FLIGHT.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        return Err(PickerError::Internal { message: "a file pick operation is already in progress; await the previous pick before starting a new one".into() });
+    }
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if !options.mime_types.is_empty() {
@@ -72,7 +80,7 @@ pub(crate) async fn pick_open_single(
         }
     }
 
-    match dialog.pick_file().await {
+    let result = match dialog.pick_file().await {
         None => Ok(None),
         Some(h) => {
             let path = h.path().to_path_buf();
@@ -81,7 +89,9 @@ pub(crate) async fn pick_open_single(
                 inner: TokenInner::Desktop { path, display_name },
             }))
         }
-    }
+    };
+    PICK_IN_FLIGHT.store(false, Ordering::Release);
+    result
 }
 
 /// Pick multiple files for reading.
@@ -110,6 +120,9 @@ pub(crate) async fn pick_open_single(
 pub(crate) async fn pick_open_multi(
     options: PickOptions,
 ) -> Result<Vec<FileAccessToken>, PickerError> {
+    if PICK_IN_FLIGHT.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        return Err(PickerError::Internal { message: "a file pick operation is already in progress; await the previous pick before starting a new one".into() });
+    }
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if !options.mime_types.is_empty() {
@@ -125,7 +138,7 @@ pub(crate) async fn pick_open_multi(
         }
     }
 
-    match dialog.pick_files().await {
+    let result = match dialog.pick_files().await {
         None => Ok(vec![]),
         Some(list) => {
             let tokens = list
@@ -140,7 +153,9 @@ pub(crate) async fn pick_open_multi(
                 .collect();
             Ok(tokens)
         }
-    }
+    };
+    PICK_IN_FLIGHT.store(false, Ordering::Release);
+    result
 }
 
 /// Pick a save location.
@@ -169,6 +184,9 @@ pub(crate) async fn pick_open_multi(
 pub(crate) async fn pick_save(
     options: SaveOptions,
 ) -> Result<Option<FileAccessToken>, PickerError> {
+    if PICK_IN_FLIGHT.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        return Err(PickerError::Internal { message: "a file pick operation is already in progress; await the previous pick before starting a new one".into() });
+    }
     let mut dialog = rfd::AsyncFileDialog::new();
 
     if let Some(ref name) = options.suggested_name {
@@ -187,7 +205,7 @@ pub(crate) async fn pick_save(
         }
     }
 
-    match dialog.save_file().await {
+    let result = match dialog.save_file().await {
         None => Ok(None),
         Some(h) => {
             let path = h.path().to_path_buf();
@@ -196,7 +214,9 @@ pub(crate) async fn pick_save(
                 inner: TokenInner::Desktop { path, display_name },
             }))
         }
-    }
+    };
+    PICK_IN_FLIGHT.store(false, Ordering::Release);
+    result
 }
 
 /// Open a token for reading.
@@ -220,6 +240,23 @@ pub(crate) fn open_write(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, Acces
                 .write(true)
                 .create(true)
                 .truncate(false)
+                .open(path)?;
+            Ok(Box::new(file))
+        }
+        _ => Err(AccessError::Platform {
+            message: "non-desktop token on desktop platform".into(),
+        }),
+    }
+}
+
+/// Open a token for writing and truncate to zero length before returning.
+pub(crate) fn open_write_truncate(inner: &TokenInner) -> Result<Box<dyn WriteSeek>, AccessError> {
+    match inner {
+        TokenInner::Desktop { path, .. } => {
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
                 .open(path)?;
             Ok(Box::new(file))
         }

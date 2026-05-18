@@ -85,6 +85,9 @@ pub(super) fn mime_types_to_extensions(mime_types: &[String]) -> Vec<String> {
             "application/vnd.oasis.opendocument.presentation" => "odp".into(),
             // E-book / other documents
             "application/epub+zip" => "epub".into(),
+            // Artisan Interchange Format (Iris)
+            "application/x-aif" => "aif".into(),
+            "audio/x-aif" => "aif".into(),
             other => {
                 // Fall back to the subtype component; callers must discard
                 // results that fail `is_valid_extension` (e.g. vnd.* subtypes

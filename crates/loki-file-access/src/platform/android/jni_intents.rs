@@ -16,6 +16,8 @@ pub(super) fn fire_open_document_intent(
     _allow_multiple: bool,
 ) -> Result<(), PickerError> {
     let ctx = ndk_context::android_context();
+    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
+    // runtime via `JNI_OnLoad`. Valid for the process lifetime; not freed here.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
@@ -33,6 +35,8 @@ pub(super) fn fire_create_document_intent(
     options: &SaveOptions,
 ) -> Result<(), PickerError> {
     let ctx = ndk_context::android_context();
+    // SAFETY: Same invariant as fire_open_document_intent — `ctx.vm()` is
+    // a valid non-null `*mut JavaVM` for the process lifetime.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
@@ -67,6 +71,8 @@ pub(super) fn fire_create_document_intent(
 /// Call `ContentResolver.takePersistableUriPermission` for a URI.
 pub(super) fn take_persistable_uri_permission(uri: &str) -> Result<(), PickerError> {
     let ctx = ndk_context::android_context();
+    // SAFETY: Same invariant as fire_open_document_intent — `ctx.vm()` is
+    // a valid non-null `*mut JavaVM` for the process lifetime.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
@@ -135,6 +141,8 @@ fn start_activity_for_result(
     intent: &jni::objects::JObject<'_>,
     request_code: i32,
 ) -> Result<(), PickerError> {
+    // SAFETY: `ctx.context()` is a non-null `jobject` for the current Android
+    // Activity, valid for the duration of the activity and not freed here.
     let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
     env.call_method(
         &activity,
@@ -176,6 +184,8 @@ pub(super) fn get_content_resolver<'a>(
     env: &mut jni::JNIEnv<'a>,
     ctx: &ndk_context::AndroidContext,
 ) -> Result<jni::objects::JObject<'a>, PickerError> {
+    // SAFETY: `ctx.context()` is a non-null `jobject` for the current Android
+    // Activity, valid for the duration of the activity and not freed here.
     let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
     env.call_method(
         &activity,
