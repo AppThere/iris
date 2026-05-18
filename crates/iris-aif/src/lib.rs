@@ -1,35 +1,53 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
-//! Artisan Interchange Format (.aif) read/write
+//! Artisan Interchange Format (`.aif`) read/write.
 //!
-//! See SPEC.md and crates/iris-aif/BRIEF.md before implementing.
+//! An AIF file is an OPC/ZIP container (managed by `loki-opc`) containing:
+//! - `iris/document.xml` — root manifest and layer tree
+//! - `iris/metadata.xml` — document title, author, editing sessions
+//! - `iris/layers/{id}/meta.xml` — per-layer properties
+//! - `iris/layers/{id}/tiles/{tx}_{ty}.exr` — pixel tile data (f16 RGBA EXR)
+//! - `iris/history/ops.bin` — Loro CRDT op log (Phase 2)
+//! - `iris/preview.png` — 256×256 sRGB composite thumbnail
+//!
+//! See SPEC.md §4 and `crates/iris-aif/BRIEF.md` for the full specification.
 //!
 //! # File access
 //!
-//! All file I/O is performed via [`appthere_file_access`].  Callers should
-//! obtain a [`FileAccessToken`] from [`FilePicker`] and pass it to
-//! `AifReader::open_token` / `AifWriter::write_token`.  On desktop a
-//! convenience `&Path` API is also available; it returns
-//! [`AifError::PathAccessDenied`] on sandboxed platforms (iOS, Android).
+//! All file I/O is performed via [`appthere_file_access`]. Callers obtain a
+//! [`FileAccessToken`] from [`FilePicker`] and pass it to
+//! [`reader::AifReader::open_token`] / [`writer::AifWriter::write_token`].
+//! On desktop a convenience `Read + Seek` API is also available.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod document;
 pub mod error;
+pub mod parts;
+pub(crate) mod xml;
+pub(crate) mod meta;
+pub(crate) mod tile;
+pub(crate) mod preview;
+pub mod reader;
+pub mod writer;
 
-// Re-export AifError at the crate root.
+// ── Primary type re-exports ───────────────────────────────────────────────────
+
+pub use document::{AifArtboard, AifCanvas, AifDocument, CanvasMode};
 pub use error::AifError;
+pub use reader::AifReader;
+pub use writer::{AifWriter, WriteOptions};
 
-// Re-export the file-access surface so iris-app callers never need to import
-// appthere-file-access directly.
+// ── OPC surface re-export ─────────────────────────────────────────────────────
+
+/// Re-export the ZIP compression selector so callers need not import loki-opc.
+pub use loki_opc::CompressionMethod;
+
+// ── File-access surface re-export ─────────────────────────────────────────────
+
+/// Re-export file-access types so iris-app never imports appthere-file-access.
 pub use appthere_file_access::{
     AccessError, FileAccessToken, FilePicker, PickOptions, PickerError, SaveOptions,
 };
-
-// OPC container types re-exported so iris-aif callers never import loki-opc directly.
-pub use loki_opc::{
-    CompressionMethod, OpcError, OpcResult, Package as OpcPackage, PartData, PartName,
-};
-
-// TODO(iris): SPEC.md §4 — AifReader, AifWriter, AifDocument stubs follow in milestone 1

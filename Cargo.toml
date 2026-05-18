@@ -26,7 +26,6 @@ repository   = "https://github.com/appthere/iris"
 # Shared dependency versions — pin once here, reference with {version} = ...
 [workspace.dependencies]
 # AppThere shared crates (path deps until published — swap to version once on crates.io)
-appthere-opc         = { path = "../appthere-opc",    version = "0.1" }
 appthere-canvas      = { path = "../appthere-canvas", version = "0.1" }
 appthere-color       = { version = "0.1" }
 appthere-file-access = { package = "loki-file-access", path = "crates/loki-file-access" }
@@ -59,6 +58,7 @@ zip             = { version = "2" }
 quick-xml       = { version = "0.36" }
 serde           = { version = "1", features = ["derive"] }
 proptest        = { version = "1" }
+png             = { version = "0.17" }
 
 [profile.dev]
 opt-level = 1          # faster compiles, still debuggable
