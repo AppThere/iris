@@ -8853,7 +8853,3 @@ dependencies = [
  "syn 2.0.117",
  "winnow 1.0.3",
 ]
-
-[[patch.unused]]
-name = "fontique"
-version = "0.8.0"

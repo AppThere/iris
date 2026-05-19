@@ -66,10 +66,9 @@ bytemuck        = { version = "1", features = ["derive"] }
 png             = { version = "0.17" }
 
 [patch.crates-io]
-# PATCH: fixes missing fontconfig_sys alias and dlopen/static feature-unification
-# conflict with blitz-dom's fontique 0.6 — remove when fontique >0.8.0 on
-# crates.io restores the alias and resolves the linkage conflict.
-fontique = { path = "crates/patches/fontique" }
+# COMPAT(dioxus): fontique patch removed — blitz-dom 0.2.4 resolves fontique 0.6.0
+# from crates.io directly; the 0.8.0-based patch was version-mismatched and never
+# applied. Re-evaluate if fontconfig_sys linkage errors appear on CI Linux.
 # PATCH: vendors dioxus-native-dom to avoid runtime unimplemented!() panics in
 # HtmlEventConverter (composition, touch, scroll, etc.) — remove when upstream
 # implements the converters Loki requires.
