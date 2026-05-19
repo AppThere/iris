@@ -3306,6 +3306,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "iris-smoke"
+version = "0.0.0"
+dependencies = [
+ "iris-aif",
+ "iris-ops",
+ "iris-pixel",
+ "loki-opc",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "iris-svg"
 version = "0.1.0"
 dependencies = [

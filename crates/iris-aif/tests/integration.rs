@@ -8,6 +8,7 @@
 //! - Error paths: missing required parts, unsupported version, duplicate IDs.
 //! - Sparse-tile omission: fully-transparent tiles not written.
 //! - Preview PNG: non-empty, valid PNG magic bytes.
+//! - Tile metadata mismatch: EXR aifLayerId does not match OPC part path.
 //!
 //! NOTE: `AifError::PermissionRevoked` is not testable on desktop CI.
 //! TODO(iris): SPEC.md §10 — add PermissionRevoked test once loki-file-access mock API exists.
@@ -18,7 +19,10 @@ use iris_aif::{
     document::{AifArtboard, AifCanvas, AifDocument, CanvasMode},
     AifError, AifReader, AifWriter, WriteOptions,
 };
-use iris_pixel::{BitDepth, LayerTree};
+use iris_pixel::{
+    BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerTree,
+    PixelLayer, TileCache, TileCoord, TileData, TILE_SIZE, LINEAR_SRGB,
+};
 use uuid::Uuid;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -169,4 +173,83 @@ fn preview_png_is_present_and_valid() {
     let name = PartName::new("/iris/preview.png").expect("name");
     let part = pkg.part(&name).expect("preview.png must be present");
     assert_eq!(&part.bytes[..8], b"\x89PNG\r\n\x1a\n", "must be PNG");
+}
+
+// ── Tile metadata mismatch ────────────────────────────────────────────────────
+
+// f16 1.0 in little-endian bytes.
+const F16_ONE_LE: [u8; 2] = [0x00, 0x3C];
+
+fn doc_with_painted_layer(layer_id: Uuid) -> AifDocument {
+    let side = TILE_SIZE as usize;
+    let pixel: [u8; 8] = [
+        F16_ONE_LE[0], F16_ONE_LE[1], // R = 1.0
+        F16_ONE_LE[0], F16_ONE_LE[1], // G = 1.0
+        F16_ONE_LE[0], F16_ONE_LE[1], // B = 1.0
+        F16_ONE_LE[0], F16_ONE_LE[1], // A = 1.0
+    ];
+    let mut raw = vec![0u8; side * side * 8];
+    for chunk in raw.chunks_exact_mut(8) {
+        chunk.copy_from_slice(&pixel);
+    }
+    let mut cache = TileCache::new(4);
+    cache.insert(TileCoord { tx: 0, ty: 0 }, TileData(raw.into_boxed_slice()));
+
+    let layer = Layer {
+        id: layer_id,
+        name: "layer".into(),
+        visible: true,
+        locked: false,
+        opacity: 1.0,
+        blend_mode: BlendMode::Normal,
+        clipping_mask: false,
+        mask: None,
+        content: LayerContent::Pixel(PixelLayer {
+            channel_layout: ChannelLayout::Rgba,
+            bit_depth: BitDepth::F16,
+            color_space: LINEAR_SRGB,
+            compression: ExrCompression::Zip,
+            canvas_offset_x: 0,
+            canvas_offset_y: 0,
+            crop_bounds: None,
+            tiles: cache,
+        }),
+    };
+    let canvas = pixel_canvas();
+    let artboard = pixel_artboard(&canvas);
+    let mut layers = LayerTree::new(canvas.width_px, canvas.height_px, canvas.dpi_x, canvas.dpi_y);
+    layers.add_layer(None, 0, layer).expect("add layer");
+    AifDocument { canvas, artboards: vec![artboard], layers, format_version: (1, 0) }
+}
+
+#[test]
+fn tile_metadata_mismatch_returns_error() {
+    use loki_opc::{Package, PartData, PartName};
+
+    // Two distinct layer UUIDs — their EXRs will embed different aifLayerId values.
+    let id_a = Uuid::from_u128(0xAAAA);
+    let id_b = Uuid::from_u128(0xBBBB);
+
+    let bytes_a = write_doc(&doc_with_painted_layer(id_a));
+    let bytes_b = write_doc(&doc_with_painted_layer(id_b));
+
+    // Extract layer A's EXR bytes (aifLayerId = id_a) from package A.
+    let pkg_a = Package::open(Cursor::new(bytes_a)).expect("open pkg_a");
+    let path_a = format!("/{}", iris_aif::parts::layer_tile_exr(&id_a, 0, 0));
+    let name_a = PartName::new(path_a).expect("name_a");
+    let exr_from_a = pkg_a.part(&name_a).expect("tile_a must exist").bytes.clone();
+
+    // Tamper: put layer A's EXR into layer B's tile slot — wrong aifLayerId inside.
+    let mut pkg_b = Package::open(Cursor::new(bytes_b)).expect("open pkg_b");
+    let path_b = format!("/{}", iris_aif::parts::layer_tile_exr(&id_b, 0, 0));
+    let name_b = PartName::new(path_b).expect("name_b");
+    pkg_b.set_part(name_b, PartData::new(exr_from_a, iris_aif::parts::CT_EXR));
+    let mut out = Cursor::new(Vec::new());
+    pkg_b.write(&mut out, None).expect("rewrite pkg_b");
+
+    let err = AifReader::open(Cursor::new(out.into_inner())).expect_err("should fail");
+    assert!(
+        matches!(err, AifError::TileMetadataMismatch { .. }),
+        "expected TileMetadataMismatch, got {err:?}"
+    );
 }

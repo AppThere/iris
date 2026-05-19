@@ -504,12 +504,12 @@ Each tile is a single OpenEXR scanline image of exactly `tileSize × tileSize` p
 | `displayWindow` | same as `dataWindow` | |
 | `pixelAspectRatio` | `1.0` | |
 | `channels` | see channel table below | |
-| `aif:layerId` | UUID string | must match the parent directory UUID |
-| `aif:tileX` | int | tile X coordinate (must match filename) |
-| `aif:tileY` | int | tile Y coordinate (must match filename) |
-| `aif:colorSpace` | string | must match `meta.xml` `colorSpace` |
+| `aifLayerId` | UUID string | must match the parent directory UUID |
+| `aifTileX` | int | tile X coordinate (must match filename) |
+| `aifTileY` | int | tile Y coordinate (must match filename) |
+| `aifColorSpace` | string | must match `meta.xml` `colorSpace` |
 
-The `aif:*` attributes are custom EXR metadata stored using the EXR arbitrary metadata mechanism. Readers must validate that `aif:layerId`, `aif:tileX`, `aif:tileY` match the OPC part path. A mismatch indicates a corrupt or manually modified file and must return `AifError::TileMetadataMismatch`.
+The `aif*` attributes are custom EXR metadata stored using the EXR arbitrary metadata mechanism. EXR attribute names cannot contain colons, so the logical `aif:*` namespace is encoded without a separator (e.g. `aifLayerId` rather than `aif:layerId`). Readers must validate that `aifLayerId`, `aifTileX`, `aifTileY` match the OPC part path. A mismatch indicates a corrupt or manually modified file and must return `AifError::TileMetadataMismatch`.
 
 **Channel layout → EXR channel names:**
 
