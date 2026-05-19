@@ -1,6 +1,6 @@
 # ADR 006 — Shared Canvas Extraction from Loki
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2024-11-01  
 **Deciders:** AppThere core team
 
@@ -37,3 +37,21 @@ This gate is tracked in the Loki ADR backlog (Loki ADR TBD). The status field of
 - Iris Phase 1 cannot begin `iris-canvas` implementation until the Loki extraction is complete. The workspace scaffold includes `iris-canvas` as a stub to maintain the dependency graph, but implementation is blocked.
 - Any bug fix or improvement to the `CustomPaintSource` integration must be made in `appthere-canvas` and will benefit both Loki and Iris.
 - `appthere-canvas` must be kept free of document semantics — it must not know about pages, layers, tiles, or paths.
+
+## Implementation notes
+
+The extraction target was loki-render-cache, not loki-vello as originally assumed.
+loki-vello is entirely Loki-specific (document layout painters) and was not extracted.
+
+appthere-canvas = loki-render-cache + FontDataCache + event-driven scroll helpers.
+
+Changes made during extraction:
+- PageCache<K: CacheKey> — generic key type (was PageIndex hardcoded)
+- BlitPipeline struct — blit pipeline cached, not recreated per downsample
+- FontDataCache — moved from loki-vello, re-exported there for API stability
+- use_settle_detector — event-driven via tokio::sync::watch (was 16ms poll)
+- LokiPageSource.renderer — shared Arc<Mutex<>> from RendererState (was per-page)
+- loki-text migrated to loki-renderer; document_source.rs and wgpu_surface.rs deleted
+
+iris-canvas uses iris_pixel::TileCoord as its CacheKey.
+appthere-canvas lives at crates/appthere-canvas/ (excluded from workspace members).

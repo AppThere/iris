@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["crates/loki-file-access", "crates/loki-opc"]
+exclude = ["crates/loki-file-access", "crates/loki-opc", "crates/appthere-canvas"]
 members = [
     "crates/iris-app",
     "crates/iris-canvas",
@@ -26,7 +26,7 @@ repository   = "https://github.com/appthere/iris"
 # Shared dependency versions — pin once here, reference with {version} = ...
 [workspace.dependencies]
 # AppThere shared crates (path deps until published — swap to version once on crates.io)
-appthere-canvas      = { path = "../appthere-canvas", version = "0.1" }
+appthere-canvas      = { path = "crates/appthere-canvas", features = ["gpu", "font-cache"] }
 appthere-color       = { version = "0.1" }
 appthere-file-access = { package = "loki-file-access", path = "crates/loki-file-access" }
 loki-opc             = { path = "crates/loki-opc", features = ["serde"] }
