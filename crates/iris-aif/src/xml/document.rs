@@ -59,7 +59,7 @@ pub(crate) fn read_document_xml(
                     "Document" => {
                         let ver = required_attr(e, "formatVersion", part)?;
                         let major = ver
-                            .splitn(2, '.')
+                            .split('.')
                             .next()
                             .unwrap_or("0")
                             .parse::<u32>()
