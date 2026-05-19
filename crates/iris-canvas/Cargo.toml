@@ -14,5 +14,8 @@ uuid      = { workspace = true }
 iris-pixel  = { workspace = true }
 iris-vector = { workspace = true }
 appthere-canvas = { workspace = true, features = ["dioxus"] }
-vello  = { workspace = true }
-wgpu   = { workspace = true }
+dioxus  = { workspace = true }
+vello   = { workspace = true }
+wgpu    = { workspace = true }
+kurbo   = { workspace = true }
+bytemuck = { workspace = true }

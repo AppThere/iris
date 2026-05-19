@@ -8,31 +8,21 @@
 
 #![forbid(unsafe_code)]
 
-// Re-export generic canvas types Iris callers need
-pub use appthere_canvas::{
-    CacheKey, CacheTier, ScrollPhase, ScrollState,
-    GpuTexture, PageSource, RenderError,
-};
-
-// iris-canvas uses TileCoord as its concrete CacheKey.
-// TileCoord: struct TileCoord { pub tx: u32, pub ty: u32 }
-// Already derives Hash, Eq, Copy — CacheKey blanket impl covers it.
-use iris_pixel::TileCoord;
-
-// Compile-time assertion: TileCoord satisfies CacheKey
-const _: () = {
-    fn _assert<T: appthere_canvas::CacheKey>() {}
-    fn _check() { _assert::<TileCoord>(); }
-};
-
-// TODO(iris): SPEC.md §6.2 — Phase 2: CanvasViewport (pan/zoom/rotation)
-// pub mod viewport;
-
-// TODO(iris): SPEC.md §6.2 — Phase 2: pixel tile compositor, 27 blend modes
-// pub mod compositor;
-
-// TODO(iris): SPEC.md §6.2 — Phase 2: Dioxus IrisCanvas component
-// pub mod canvas_widget;
+pub mod canvas_widget;
+pub mod key;
+pub(crate) mod compositor;
+pub mod viewport;
 
 // TODO(iris): SPEC.md §6.2 — Phase 2: overlay pass (selection, guides, artboards)
 // pub mod overlay;
+
+// Re-export generic canvas types Iris callers need
+pub use appthere_canvas::{
+    CacheKey, CacheTier, GpuTexture, PageSource, RenderError, ScrollPhase, ScrollState,
+};
+
+// Iris-specific public API
+pub use canvas_widget::IrisCanvas;
+pub use compositor::CompositorError;
+pub use key::TileKey;
+pub use viewport::{CanvasViewport, MAX_ZOOM, MIN_ZOOM};

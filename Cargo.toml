@@ -42,7 +42,7 @@ iris-plugin-api = { path = "crates/iris-plugin-api" }
 # External dependencies
 dioxus          = { version = "0.7", features = ["native"] }
 vello           = { version = "0.4" }
-wgpu            = { version = "22" }
+wgpu            = { version = "26" }
 kurbo           = { version = "0.11" }
 parley          = { version = "0.2" }
 loro            = { version = "1" }
@@ -58,6 +58,7 @@ zip             = { version = "2" }
 quick-xml       = { version = "0.36" }
 serde           = { version = "1", features = ["derive"] }
 proptest        = { version = "1" }
+bytemuck        = { version = "1", features = ["derive"] }
 png             = { version = "0.17" }
 
 [profile.dev]
