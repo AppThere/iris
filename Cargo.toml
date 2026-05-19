@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["crates/loki-file-access", "crates/loki-opc"]
+exclude = ["crates/loki-file-access", "crates/loki-opc", "crates/appthere-canvas"]
 members = [
     "crates/iris-app",
     "crates/iris-canvas",
@@ -26,7 +26,7 @@ repository   = "https://github.com/appthere/iris"
 # Shared dependency versions — pin once here, reference with {version} = ...
 [workspace.dependencies]
 # AppThere shared crates (path deps until published — swap to version once on crates.io)
-appthere-canvas      = { path = "../appthere-canvas", version = "0.1" }
+appthere-canvas      = { path = "crates/appthere-canvas", features = ["gpu", "font-cache"] }
 appthere-color       = { version = "0.1" }
 appthere-file-access = { package = "loki-file-access", path = "crates/loki-file-access" }
 loki-opc             = { path = "crates/loki-opc", features = ["serde"] }
@@ -42,7 +42,7 @@ iris-plugin-api = { path = "crates/iris-plugin-api" }
 # External dependencies
 dioxus          = { version = "0.7", features = ["native"] }
 vello           = { version = "0.4" }
-wgpu            = { version = "22" }
+wgpu            = { version = "26" }
 kurbo           = { version = "0.11" }
 parley          = { version = "0.2" }
 loro            = { version = "1" }
@@ -58,6 +58,7 @@ zip             = { version = "2" }
 quick-xml       = { version = "0.36" }
 serde           = { version = "1", features = ["derive"] }
 proptest        = { version = "1" }
+bytemuck        = { version = "1", features = ["derive"] }
 png             = { version = "0.17" }
 
 [profile.dev]

@@ -996,7 +996,9 @@ Unlike Loki's paginated scroll, Iris uses an infinite canvas anchored at `(0, 0)
 ```rust
 // iris-canvas/src/viewport.rs
 pub struct CanvasViewport {
-    /// Document-space origin at the top-left of the screen viewport
+    /// Document-space coordinate anchored at the screen center.
+    /// Rotation is always around the screen center. (Q1: top-left convention
+    /// rejected — it is undefined when rotation is non-zero.)
     pub pan: Vec2,
     /// Zoom factor (1.0 = 100%, 0.1 = 10%, 64.0 = 6400%)
     pub zoom: f32,
