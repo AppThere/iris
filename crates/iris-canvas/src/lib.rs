@@ -11,6 +11,7 @@
 pub mod canvas_widget;
 pub mod key;
 pub(crate) mod compositor;
+pub(crate) mod paint_bridge;
 pub mod viewport;
 
 // TODO(iris): SPEC.md §6.2 — Phase 2: overlay pass (selection, guides, artboards)

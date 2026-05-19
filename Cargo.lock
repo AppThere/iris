@@ -3279,6 +3279,7 @@ dependencies = [
 name = "iris-canvas"
 version = "0.1.0"
 dependencies = [
+ "anyrender_vello",
  "appthere-canvas",
  "bytemuck",
  "dioxus",

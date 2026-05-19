@@ -2,32 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! [`IrisCanvas`] — Dioxus component that composites a [`LayerTree`] into a
-//! wgpu-rendered canvas element.
+//! wgpu-rendered canvas element via Dioxus Native's `use_wgpu` hook.
 //!
-//! # BLOCKING — appthere-canvas Dioxus paint hook not yet available
+//! # Architecture
 //!
-//! `appthere-canvas/src/dioxus/` contains only `scroll_driver.rs` (settle
-//! detector). There is no Dioxus hook or component that calls
-//! `PageSource::render()` and presents the resulting `GpuTexture` to the
-//! Dioxus/Blitz render tree.
+//! Dioxus Native (Blitz) owns the GPU device and calls the paint source on
+//! every frame. The bridge:
+//!   1. `IrisCanvas` holds shared `Arc<Mutex<…>>` state for the viewport and
+//!      layer tree, updated on each Dioxus re-render.
+//!   2. `use_wgpu` registers an [`IrisCanvasPaintSource`] with the Blitz
+//!      renderer; it calls `Compositor::composite()` each frame, hands the
+//!      resulting `wgpu::Texture` to `CustomPaintCtx::register_texture`, and
+//!      returns the `TextureHandle` for `<canvas src="…">`.
+//!   3. `IrisPageSource` implements `appthere_canvas::PageSource` for
+//!      non-Dioxus contexts (e.g. headless rendering, tests).
 //!
-//! The `PageSource<Key = ()>` implementation on [`IrisPageSource`] is complete
-//! and correct. The blocking gap is the bridge from Dioxus component → wgpu
-//! device acquisition → `render()` invocation. Until appthere-canvas ships
-//! that bridge (e.g. a `use_canvas_paint` hook), `IrisCanvas` renders an
-//! empty placeholder div.
-//!
-// TODO(iris): SPEC.md §6.2 — BLOCKED: implement use_canvas_paint (or equivalent)
-//   in appthere-canvas/src/dioxus/ that calls PageSource::render() and feeds
-//   the GpuTexture to Dioxus Native's CustomPaintSource. Then wire IrisCanvas
-//   to call it here.
+//! Hooks rule: every `use_*` call is unconditional at the top level of the
+//! component body — no hooks inside closures, conditions, or loops.
 
 use std::sync::{Arc, Mutex};
 
+use dioxus::native::use_wgpu;
 use dioxus::prelude::*;
 use iris_pixel::LayerTree;
 
 use crate::compositor::Compositor;
+use crate::paint_bridge::IrisCanvasPaintSource;
 use crate::viewport::CanvasViewport;
 
 /// Props for the [`IrisCanvas`] component.
@@ -45,48 +45,58 @@ pub struct IrisCanvasProps {
 
 /// Dioxus component for the Iris infinite canvas.
 ///
-/// Phase 2 renders an empty placeholder until the appthere-canvas Dioxus paint
-/// hook is available (see module-level BLOCKED comment above).
-///
-/// Hooks rule (lesson from iris-aif): every `use_*` call is at the top level of
-/// the component body — never inside a closure, conditional, or loop.
+/// Renders via Dioxus Native's `use_wgpu` + Blitz `<canvas src="{id}">`.
+/// Reactive signals keep viewport and layer tree in sync with the component tree.
 #[component]
 pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
-    // Lazily-initialised compositor, shared with the PageSource impl.
-    // Stored in use_hook so it survives re-renders without reinitialisation.
+    // Lazily-initialised compositor, shared with the paint source.
     let compositor = use_hook(|| Arc::new(Mutex::new(Compositor::new())));
 
-    // TODO(iris): SPEC.md §6.2 — Phase 2+: use_settle_detector for quality-tier
-    // promotion. Wire when the appthere-canvas Dioxus paint hook is available.
-    // let (task, _tx) = use_settle_detector(scroll_signal, || compositor.mark_all_dirty());
-    // use_drop(move || task.cancel());
+    // Shared viewport and tree: initialised once, updated each re-render so the
+    // paint source always sees the latest state without needing Dioxus context.
+    let shared_viewport = use_hook(|| Arc::new(Mutex::new(props.viewport.peek().clone())));
+    let shared_tree = use_hook(|| Arc::new(Mutex::new(props.tree.peek().clone())));
 
-    // TODO(iris): SPEC.md §6.2 — BLOCKED: mount IrisPageSource via
-    // appthere_canvas::dioxus::use_canvas_paint (not yet implemented in
-    // appthere-canvas). Once available, replace the placeholder div below.
-    let _ = compositor; // suppress unused warning until paint hook is wired
+    // Sync signal values into shared state on every re-render.
+    if let Ok(mut vp) = shared_viewport.try_lock() {
+        *vp = props.viewport.read().clone();
+    }
+    if let Ok(mut tr) = shared_tree.try_lock() {
+        *tr = props.tree.read().clone();
+    }
+
+    // Register the paint source with Blitz. `use_wgpu` uses `use_hook_with_cleanup`
+    // internally — auto-unregisters when the component is dropped. FnOnce captures
+    // cloned Arcs, so the shared state remains live for the component's lifetime.
+    let canvas_id = use_wgpu(|| {
+        IrisCanvasPaintSource::new(
+            compositor.clone(),
+            shared_viewport.clone(),
+            shared_tree.clone(),
+        )
+    });
 
     rsx! {
-        div {
-            style: "width: {props.width}px; height: {props.height}px; background: #1a1a1a;",
-            // TODO(iris): SPEC.md §6.2 — BLOCKED: replace placeholder div with
-            // wgpu-rendered canvas once appthere-canvas ships a Dioxus paint hook.
+        canvas {
+            // "src" is not in Dioxus's canvas element schema but blitz-dom reads
+            // it to associate a registered CustomPaintSource with this element.
+            "src": "{canvas_id}",
+            width: "{props.width}",
+            height: "{props.height}",
+            style: "display: block; width: {props.width}px; height: {props.height}px;",
         }
     }
 }
 
 /// [`appthere_canvas::PageSource`] implementation for the Iris compositor.
 ///
-/// The unit key `()` represents the single composited viewport — there is
-/// exactly one "page" per canvas view (Q4 decision from audit).
-///
-/// The `render()` call triggers the full compositor pass: iterate visible
-/// layers, upload tiles, blend via Normal-mode render pipeline, return texture.
+/// The unit key `()` represents the single composited viewport. Useful for
+/// headless rendering and non-Dioxus contexts. Dioxus Native rendering uses
+/// [`IrisCanvasPaintSource`] via `use_wgpu` instead.
 pub struct IrisPageSource {
     compositor: Arc<Mutex<Compositor>>,
     width: u32,
     height: u32,
-    // The viewport is cloned at render time from the Dioxus signal read.
     viewport: CanvasViewport,
     tree: LayerTree,
 }

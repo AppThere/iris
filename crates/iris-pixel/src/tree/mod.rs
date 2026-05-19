@@ -20,7 +20,7 @@ pub(super) enum ParentLocation {
 /// All layers live in a flat [`BTreeMap`]; tree structure is encoded by
 /// `LayerContent::Group` child-ID lists. Root-level layers are in `root_ids`.
 // BTreeMap chosen over HashMap for deterministic iteration order (CLAUDE.md).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LayerTree {
     /// Canvas width in pixels.
     pub canvas_width: u32,

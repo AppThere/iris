@@ -19,3 +19,4 @@ vello   = { workspace = true }
 wgpu    = { workspace = true }
 kurbo   = { workspace = true }
 bytemuck = { workspace = true }
+anyrender_vello = "0.6.2"
