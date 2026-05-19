@@ -44,7 +44,7 @@ iris-canvas     = { path = "crates/iris-canvas" }
 iris-plugin-api = { path = "crates/iris-plugin-api" }
 
 # External dependencies
-dioxus          = { version = "0.7.4", features = ["native"] }
+dioxus          = { version = "=0.7.4", features = ["native"] }
 vello           = { version = "0.6" }
 wgpu            = { version = "26" }
 kurbo           = { version = "0.11" }
