@@ -130,9 +130,10 @@ impl Compositor {
             u8_data.push((a * 255.0 + 0.5) as u8);
         }
 
-        // COMPAT(blitz): Rgba8Unorm + TEXTURE_BINDING + COPY_DST matches the
-        // format expected by anyrender_vello::CustomPaintCtx::register_texture().
-        // COPY_DST is required by queue.write_texture().
+        // COMPAT(blitz): Rgba8Unorm + COPY_SRC + COPY_DST is required by
+        // vello::Renderer::register_texture(), which copies the texture into
+        // Vello's image atlas via a wgpu copy operation (needs COPY_SRC).
+        // COPY_DST is required by queue.write_texture() for the initial upload.
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("iris-canvas-composite"),
             size: wgpu::Extent3d {
@@ -142,7 +143,7 @@ impl Compositor {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         queue.write_texture(
