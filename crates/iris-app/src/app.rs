@@ -12,6 +12,10 @@ pub fn App() -> Element {
     provide_context(AtThemeContext::default());
     let state = use_signal(AppState::default);
     rsx! {
-        AppLayout { state }
+        div {
+            style: "margin: 0; padding: 0; width: 100%; height: 100vh; \
+                    box-sizing: border-box; overflow: hidden;",
+            AppLayout { state }
+        }
     }
 }
