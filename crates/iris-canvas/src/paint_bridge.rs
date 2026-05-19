@@ -76,8 +76,13 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         let tree_guard = self.tree.lock().ok()?;
         let compositor_guard = self.compositor.lock().ok()?;
 
-        let gpu_texture = compositor_guard
-            .composite(&tree_guard, &viewport, width, height, &dh.device, &dh.queue)
+        // CPU composite path: uses queue.write_texture() rather than a CommandEncoder
+        // submission. Submitting a CommandEncoder here corrupts Vello's in-progress encoder,
+        // causing the "Encoder is invalid" crash.
+        // TODO(iris): Phase 4 — replace with GPU compute path that follows Loki's
+        // render_to_texture() pattern so work is submitted through Vello's encoder.
+        let texture = compositor_guard
+            .composite_to_texture(&tree_guard, &viewport, width, height, &dh.device, &dh.queue)
             .ok()?;
 
         drop(compositor_guard);
@@ -86,7 +91,7 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         // scale is passed through for future use; current compositor uses width/height directly.
         let _ = scale;
 
-        let handle = ctx.register_texture(gpu_texture.inner);
+        let handle = ctx.register_texture(texture);
         self.last_handle = Some(handle.clone());
         Some(handle)
     }

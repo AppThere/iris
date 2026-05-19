@@ -1,11 +1,23 @@
-// Copyright 2026 AppThere Project
+// Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
-//! AppThere Iris — application entry point.
-//!
-//! See SPEC.md §11 and crates/iris-app/BRIEF.md before implementing.
+mod app;
+mod canvas_area;
+mod home_tab;
+mod layers_panel;
+mod layout;
+mod ribbon;
+mod state;
+mod status_bar;
+mod tool_palette;
+
+use app::App;
 
 fn main() {
-    // TODO(iris): SPEC.md §11 — Dioxus Native launch; stub only
-    println!("AppThere Iris — not yet implemented");
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    tracing::info!("AppThere Iris starting");
+    dioxus::launch(App);
 }

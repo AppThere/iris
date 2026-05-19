@@ -22,7 +22,9 @@ struct TileParams {
     corner_bl: vec2<f32>,   // bottom-left  in NDC
     corner_br: vec2<f32>,   // bottom-right in NDC
     opacity: f32,
-    _pad: vec3<f32>,        // 16-byte alignment
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 };
 
 @group(0) @binding(0) var t_tile: texture_2d<f32>;

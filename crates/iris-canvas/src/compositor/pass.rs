@@ -7,6 +7,11 @@
 //! via hardware `PREMULTIPLIED_ALPHA_BLENDING`. One pipeline, many draw calls.
 //!
 //! See `src/shaders/normal_blend.wgsl` for the vertex/fragment shaders.
+//!
+//! TODO(iris): Phase 4 — this GPU render-pass path will replace `Compositor::composite_to_texture()`
+//! once restructured to not submit its own `CommandEncoder`. The composite must be submitted
+//! through Vello's encoder via `vello::Renderer::render_to_texture()` to avoid corrupting
+//! Vello's in-progress encoder. See loki-renderer/src/page_paint_source.rs for the pattern.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt as _;
