@@ -16,19 +16,26 @@ use crate::tool_palette::ToolPalette;
 
 #[component]
 pub fn AppLayout(mut state: Signal<AppState>) -> Element {
-    let tabs: Vec<AtDocumentTabData> = state.read().document.as_ref().map(|doc| {
-        vec![AtDocumentTabData {
-            title: doc.title.clone(),
-            is_dirty: doc.dirty,
-            is_discarded: false,
-        }]
-    }).unwrap_or_default();
+    let tabs: Vec<AtDocumentTabData> = state
+        .read()
+        .document
+        .as_ref()
+        .map(|doc| {
+            vec![AtDocumentTabData {
+                title: doc.title.clone(),
+                is_dirty: doc.dirty,
+                is_discarded: false,
+            }]
+        })
+        .unwrap_or_default();
 
     let active_idx = state.read().active_tab_index;
     let platform = state.read().platform;
-    let title = state.read().document.as_ref()
-        .map(|d| d.title.clone());
-    let is_dirty = state.read().document.as_ref()
+    let title = state.read().document.as_ref().map(|d| d.title.clone());
+    let is_dirty = state
+        .read()
+        .document
+        .as_ref()
         .map(|d| d.dirty)
         .unwrap_or(false);
 

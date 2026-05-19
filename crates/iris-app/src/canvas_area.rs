@@ -17,13 +17,19 @@ const CANVAS_HEIGHT: u32 = 600;
 pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
     // All hooks called unconditionally before any early return (Dioxus rules).
     let tree_signal = use_signal(move || {
-        state.read().document.as_ref()
+        state
+            .read()
+            .document
+            .as_ref()
             .map(|d| d.tree.clone())
             .unwrap_or_else(|| LayerTree::new(1, 1, 96.0, 96.0))
     });
 
     let viewport_signal = use_signal(move || {
-        state.read().document.as_ref()
+        state
+            .read()
+            .document
+            .as_ref()
             .map(|d| d.viewport.clone())
             .unwrap_or_default()
     });
