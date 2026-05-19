@@ -2,6 +2,7 @@
 resolver = "2"
 exclude = ["crates/loki-file-access", "crates/loki-opc", "crates/appthere-canvas"]
 members = [
+    "crates/appthere-ui",
     "crates/iris-app",
     "crates/iris-canvas",
     "crates/iris-pixel",
@@ -30,6 +31,9 @@ appthere-canvas      = { path = "crates/appthere-canvas", features = ["gpu", "fo
 appthere-color       = { version = "0.1" }
 appthere-file-access = { package = "loki-file-access", path = "crates/loki-file-access" }
 loki-opc             = { path = "crates/loki-opc", features = ["serde"] }
+
+# AppThere UI shared crate
+appthere-ui     = { path = "crates/appthere-ui" }
 
 # Iris internal crates (path deps within this workspace)
 iris-ops        = { path = "crates/iris-ops" }

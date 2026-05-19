@@ -67,7 +67,7 @@ pub struct RecentDocument {
 /// All interactive elements (template cards, document rows, buttons) meet this.
 #[component]
 pub fn AtHomeTab(props: AtHomeTabProps) -> Element {
-    let viewport_width = use_signal(|| 375.0_f32);
+    let viewport_width = use_signal(|| props.viewport_width_px);
     let is_desktop = viewport_width() >= BREAKPOINT_DESKTOP_PX;
 
     // Holds the last file-picker error message, if any.
@@ -201,7 +201,7 @@ pub fn AtHomeTab(props: AtHomeTabProps) -> Element {
                         fg     = COLOR_STATUS_ERROR_TEXT,
                         size   = FONT_SIZE_LABEL,
                     ),
-                    "Could not open file picker: {err}"
+                    "{props.pick_error_prefix}: {err}"
                 }
             }
 
@@ -261,6 +261,12 @@ pub struct AtHomeTabProps {
     pub open_file_label: String,
     /// Message shown when `recent_documents` is empty.
     pub empty_recent_label: String,
+
+    // COMPAT(loki): loki-text's AtHomeTab call sites need updating to pass pick_error_prefix and viewport_width_px props
+    /// Prefix for the file-picker error banner.
+    pub pick_error_prefix: String,
+    /// Viewport width in CSS pixels, used for responsive layout detection.
+    pub viewport_width_px: f32,
 
     // ── Callbacks ─────────────────────────────────────────────────────────────
     /// Called when a template card is selected. Argument is the index into `templates`.
