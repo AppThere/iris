@@ -24,12 +24,12 @@ pub(crate) fn write_preview_png() -> Result<Vec<u8>, AifError> {
 
         let mut writer = encoder
             .write_header()
-            .map_err(|e| AifError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| AifError::Io(std::io::Error::other(e.to_string())))?;
 
         // Single fully-transparent pixel: [R=0, G=0, B=0, A=0]
         writer
             .write_image_data(&[0u8, 0, 0, 0])
-            .map_err(|e| AifError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| AifError::Io(std::io::Error::other(e.to_string())))?;
     }
 
     Ok(buf)

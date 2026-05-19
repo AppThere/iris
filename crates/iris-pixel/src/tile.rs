@@ -98,9 +98,9 @@ impl TileCache {
     /// oldest tile is evicted first. Updating an existing coord does not
     /// change its eviction order.
     pub fn insert(&mut self, coord: TileCoord, data: TileData) {
-        if self.data.contains_key(&coord) {
+        if let std::collections::btree_map::Entry::Occupied(mut e) = self.data.entry(coord) {
             // Update in place; eviction position in `order` is unchanged.
-            self.data.insert(coord, data);
+            e.insert(data);
             self.dirty.insert(coord);
             return;
         }

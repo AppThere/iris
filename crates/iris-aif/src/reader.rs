@@ -167,7 +167,7 @@ fn required_part_by_id<'p>(
 }
 
 fn make_part_name(path: &str) -> Result<PartName, AifError> {
-    PartName::new(format!("/{path}")).map_err(|e| AifError::Opc(e))
+    PartName::new(format!("/{path}")).map_err(AifError::Opc)
 }
 
 fn parse_format_version_from_pkg(_pkg: &Package) -> (u32, u32) {

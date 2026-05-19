@@ -185,7 +185,7 @@ fn set_part(
     bytes: Vec<u8>,
     media_type: &str,
 ) -> Result<(), AifError> {
-    let name = PartName::new(format!("/{path}")).map_err(|e| AifError::Opc(e))?;
+    let name = PartName::new(format!("/{path}")).map_err(AifError::Opc)?;
     pkg.set_part(name, PartData::new(bytes, media_type));
     Ok(())
 }
