@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use appthere_ui::tokens::colors::{COLOR_SURFACE_BASE, COLOR_TEXT_ON_CHROME_SECONDARY};
+use appthere_ui::tokens::layout::{
+    RIBBON_TOTAL_HEIGHT, STATUS_BAR_HEIGHT, TAB_BAR_HEIGHT, TITLE_BAR_HEIGHT_MACOS,
+};
 use appthere_ui::tokens::typography::FONT_SIZE_BODY;
 use dioxus::prelude::*;
 use iris_canvas::IrisCanvas;
@@ -9,14 +12,19 @@ use iris_pixel::LayerTree;
 
 use crate::state::AppState;
 
-// TODO(iris): SPEC.md §11.3 — measure actual CanvasArea dimensions via onmounted
-const CANVAS_WIDTH: u32 = 800;
-const CANVAS_HEIGHT: u32 = 600;
+// Chrome dimensions used to derive the canvas rendered area from window size.
+// Left/right panel widths are defined in tool_palette.rs / layers_panel.rs;
+// duplicated here until they are promoted to appthere-ui layout tokens.
+// TODO(iris): SPEC.md §11.3 — move to appthere-ui layout tokens
+const CHROME_LEFT: u32 = 56;   // TOOL_PALETTE_WIDTH
+const CHROME_RIGHT: u32 = 240; // LAYERS_PANEL_WIDTH
+const CHROME_TOP: u32 = (TITLE_BAR_HEIGHT_MACOS + TAB_BAR_HEIGHT + RIBBON_TOTAL_HEIGHT) as u32;
+const CHROME_BOTTOM: u32 = STATUS_BAR_HEIGHT as u32;
 
 #[component]
 pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
     // All hooks called unconditionally before any early return (Dioxus rules).
-    let tree_signal = use_signal(move || {
+    let mut tree_signal = use_signal(move || {
         state
             .read()
             .document
@@ -41,6 +49,34 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
         }
     });
 
+    // Sync tree_signal → IrisCanvas when a stroke has painted new tile data.
+    // canvas_dirty is set by tool_dispatch after each Down/Move/Up event.
+    use_effect(move || {
+        if state.read().canvas_dirty {
+            let new_tree = state
+                .read()
+                .document
+                .as_ref()
+                .map(|d| d.tree.clone())
+                .unwrap_or_else(|| LayerTree::new(1, 1, 96.0, 96.0));
+            *tree_signal.write() = new_tree;
+            state.write().canvas_dirty = false;
+        }
+    });
+
+    // Compute canvas rendered size = window size minus shell chrome.
+    // TODO(iris): SPEC.md §11.3 — replace hardcoded window size with a real
+    // window-size hook once dioxus-native exposes one (winit PhysicalSize is
+    // available but no Dioxus hook wraps it yet).
+    let window_w = use_signal(|| 1280u32);
+    let window_h = use_signal(|| 800u32);
+    let canvas_w = use_memo(move || {
+        window_w().saturating_sub(CHROME_LEFT + CHROME_RIGHT).max(100)
+    });
+    let canvas_h = use_memo(move || {
+        window_h().saturating_sub(CHROME_TOP + CHROME_BOTTOM).max(100)
+    });
+
     let doc_exists = state.read().document.is_some();
 
     // Early return AFTER all hooks.
@@ -62,8 +98,11 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
             IrisCanvas {
                 tree: tree_signal,
                 viewport: viewport_signal,
-                width: CANVAS_WIDTH,
-                height: CANVAS_HEIGHT,
+                width: canvas_w(),
+                height: canvas_h(),
+                on_tool_event: move |evt| {
+                    crate::tool_dispatch::dispatch_tool_event(evt, state);
+                },
             }
         }
     }

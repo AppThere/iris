@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "03ae9a4204583735e74ec95a13465cc65d32b63d"
+  },
+  "path_in_vcs": "crates/wgpu_context"
+}

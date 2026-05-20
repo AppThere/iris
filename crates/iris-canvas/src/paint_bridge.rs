@@ -26,13 +26,19 @@ use crate::viewport::CanvasViewport;
 /// Bridges [`Compositor`] into `anyrender_vello::CustomPaintSource` so that
 /// Dioxus Native's `use_wgpu` hook can drive the Iris render pipeline.
 ///
-/// `viewport` and `tree` are `Arc<Mutex<…>>` shared with the `IrisCanvas`
-/// component body, which updates them on every re-render. The Blitz paint
-/// loop calls `render()` independently; no Dioxus reactive context is needed.
+/// `viewport`, `tree`, and `rendered_size` are `Arc<Mutex<…>>` shared with
+/// the `IrisCanvas` component body. The Blitz paint loop calls `render()`
+/// independently; no Dioxus reactive context is needed.
+///
+/// `rendered_size` is written on every `render()` call with the true Blitz
+/// layout dimensions, ensuring event handlers always see the correct size
+/// regardless of when `onmounted` fires relative to the first click.
 pub(crate) struct IrisCanvasPaintSource {
     compositor: Arc<Mutex<Compositor>>,
     viewport: Arc<Mutex<CanvasViewport>>,
     tree: Arc<Mutex<LayerTree>>,
+    /// Written each frame by `render()` with the Blitz-reported canvas size.
+    rendered_size: Arc<Mutex<(u32, u32)>>,
     device_handle: Option<DeviceHandle>,
     last_handle: Option<TextureHandle>,
 }
@@ -42,8 +48,9 @@ impl IrisCanvasPaintSource {
         compositor: Arc<Mutex<Compositor>>,
         viewport: Arc<Mutex<CanvasViewport>>,
         tree: Arc<Mutex<LayerTree>>,
+        rendered_size: Arc<Mutex<(u32, u32)>>,
     ) -> Self {
-        Self { compositor, viewport, tree, device_handle: None, last_handle: None }
+        Self { compositor, viewport, tree, rendered_size, device_handle: None, last_handle: None }
     }
 }
 
@@ -64,6 +71,26 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         height: u32,
         scale: f64,
     ) -> Option<TextureHandle> {
+        // COMPAT(blitz): blitz-paint passes PHYSICAL pixel dimensions to render()
+        // (content_box.width() = layout.size.width * scale, per blitz-paint/render.rs).
+        // Event coordinates (element_coordinates()) are in LOGICAL CSS pixels (Winit
+        // logical cursor position minus Taffy absolute_position, both in CSS px).
+        // Divide by scale to get the logical canvas size that screen_to_doc() expects.
+        let logical_w = ((width as f64) / scale.max(1.0)).round() as u32;
+        let logical_h = ((height as f64) / scale.max(1.0)).round() as u32;
+        // Write logical size first — must succeed even if compositing fails later.
+        if let Ok(mut sz) = self.rendered_size.try_lock() {
+            *sz = (logical_w, logical_h);
+        }
+        tracing::debug!(
+            physical_w = width,
+            physical_h = height,
+            scale = scale,
+            logical_w = logical_w,
+            logical_h = logical_h,
+            "IrisCanvasPaintSource::render size"
+        );
+
         let dh = self.device_handle.as_ref()?;
 
         if let Some(old) = self.last_handle.take() {
@@ -82,14 +109,11 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         // TODO(iris): Phase 4 — replace with GPU compute path that follows Loki's
         // render_to_texture() pattern so work is submitted through Vello's encoder.
         let texture = compositor_guard
-            .composite_to_texture(&tree_guard, &viewport, width, height, &dh.device, &dh.queue)
+            .composite_to_texture(&tree_guard, &viewport, width, height, scale, &dh.device, &dh.queue)
             .ok()?;
 
         drop(compositor_guard);
         drop(tree_guard);
-
-        // scale is passed through for future use; current compositor uses width/height directly.
-        let _ = scale;
 
         let handle = ctx.register_texture(texture);
         self.last_handle = Some(handle.clone());

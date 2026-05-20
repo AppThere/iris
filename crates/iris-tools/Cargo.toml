@@ -1,0 +1,17 @@
+[package]
+name        = "iris-tools"
+version     = "0.1.0"
+description = "Iris pixel tool implementations: brush, eraser, and future tools"
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+iris-pixel  = { workspace = true }
+iris-ops    = { workspace = true }
+iris-canvas = { workspace = true }
+kurbo       = { workspace = true }
+tracing     = { workspace = true }
+thiserror   = { workspace = true }
+uuid        = { workspace = true }

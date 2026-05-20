@@ -9,6 +9,7 @@ mod layout;
 mod ribbon;
 mod state;
 mod status_bar;
+mod tool_dispatch;
 mod tool_palette;
 
 use app::App;

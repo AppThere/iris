@@ -19,6 +19,9 @@ pub struct DioxusState {
     pub(crate) node_id_mapping: Vec<Option<NodeId>>,
     /// Count of each handler type
     pub(crate) event_handler_counts: [u32; 32],
+    /// Elements that registered `onmounted` during the current mutation pass.
+    /// Drained by [`DioxusDocument::poll`] after layout has been computed.
+    pub(crate) pending_mounted_ids: Vec<(ElementId, NodeId)>,
 }
 
 impl DioxusState {
@@ -29,6 +32,7 @@ impl DioxusState {
             stack: vec![root_id],
             node_id_mapping: vec![Some(root_id)],
             event_handler_counts: [0; 32],
+            pending_mounted_ids: Vec::new(),
         }
     }
 
@@ -254,6 +258,14 @@ impl WriteMutations for MutationWriter<'_> {
         if let Ok(kind) = DomEventKind::from_str(name) {
             let idx = kind.discriminant() as usize;
             self.state.event_handler_counts[idx] += 1;
+        }
+
+        // COMPAT(blitz): `mounted` is not a DomEventKind — it is not routed through
+        // the normal Blitz event dispatch path. Queue it so DioxusDocument::poll can
+        // fire it after the next layout pass with the element's actual dimensions.
+        if name == "mounted" {
+            let node_id = self.state.element_to_node_id(id);
+            self.state.pending_mounted_ids.push((id, node_id));
         }
     }
 

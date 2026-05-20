@@ -10,6 +10,7 @@
 
 pub mod canvas_widget;
 pub mod key;
+pub mod tool_event;
 pub(crate) mod compositor;
 pub(crate) mod paint_bridge;
 pub mod viewport;
@@ -26,4 +27,5 @@ pub use appthere_canvas::{
 pub use canvas_widget::IrisCanvas;
 pub use compositor::CompositorError;
 pub use key::TileKey;
+pub use tool_event::{PointerButton, ToolEvent};
 pub use viewport::{CanvasViewport, MAX_ZOOM, MIN_ZOOM};

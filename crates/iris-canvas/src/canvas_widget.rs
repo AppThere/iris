@@ -22,12 +22,14 @@
 
 use std::sync::{Arc, Mutex};
 
+use dioxus::html::input_data::MouseButton;
 use dioxus::native::use_wgpu;
 use dioxus::prelude::*;
 use iris_pixel::LayerTree;
 
 use crate::compositor::Compositor;
 use crate::paint_bridge::IrisCanvasPaintSource;
+use crate::tool_event::{PointerButton, ToolEvent};
 use crate::viewport::CanvasViewport;
 
 /// Props for the [`IrisCanvas`] component.
@@ -41,6 +43,28 @@ pub struct IrisCanvasProps {
     pub width: u32,
     /// Canvas height in CSS pixels.
     pub height: u32,
+    /// Called for every normalised tool event (down, move, up, scroll, pinch).
+    pub on_tool_event: EventHandler<ToolEvent>,
+}
+
+/// Convert CSS element-local coordinates from a mouse event to a `kurbo::Vec2`.
+///
+/// `element_coordinates()` returns the position relative to the element's
+/// top-left corner — the same coordinate space that `CanvasViewport::screen_to_doc`
+/// expects as its `screen` argument.
+fn screen_pos(evt: &Event<MouseData>) -> kurbo::Vec2 {
+    let p = evt.element_coordinates();
+    kurbo::Vec2::new(p.x, p.y)
+}
+
+/// Map a Dioxus `MouseButton` to the canvas-internal `PointerButton`.
+fn to_pointer_button(btn: MouseButton) -> PointerButton {
+    match btn {
+        MouseButton::Primary => PointerButton::Primary,
+        MouseButton::Secondary => PointerButton::Secondary,
+        MouseButton::Auxiliary => PointerButton::Middle,
+        _ => PointerButton::Primary,
+    }
 }
 
 /// Dioxus component for the Iris infinite canvas.
@@ -56,6 +80,14 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     // paint source always sees the latest state without needing Dioxus context.
     let shared_viewport = use_hook(|| Arc::new(Mutex::new(props.viewport.peek().clone())));
     let shared_tree = use_hook(|| Arc::new(Mutex::new(props.tree.peek().clone())));
+
+    // shared_size: written by the paint source on every render() call with the
+    // Blitz-reported canvas dimensions. Event handlers read from this so they
+    // always use the same coordinate space as the compositor.
+    // Initialised from props as a fallback for the window between component
+    // creation and the first compositor render (in practice, never hit since
+    // Blitz paints before the window is interactive).
+    let shared_size = use_hook(|| Arc::new(Mutex::new((props.width, props.height))));
 
     // Sync signal values into shared state on every re-render.
     if let Ok(mut vp) = shared_viewport.try_lock() {
@@ -73,17 +105,138 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             compositor.clone(),
             shared_viewport.clone(),
             shared_tree.clone(),
+            shared_size.clone(),
         )
     });
 
+    let mut vp = props.viewport;
+    let on_down  = props.on_tool_event.clone();
+    let on_move  = props.on_tool_event.clone();
+    let on_up    = props.on_tool_event.clone();
+    let on_wheel = props.on_tool_event.clone();
+    // Clone Arc once per closure — Arc is Clone, not Copy.
+    let size_down    = shared_size.clone();
+    let size_move    = shared_size.clone();
+    let size_up      = shared_size.clone();
+    let size_wheel   = shared_size.clone();
+    let size_mounted = shared_size.clone();
+
     rsx! {
-        canvas {
+        div {
+            // COMPAT(blitz): custom paint canvas elements don't participate in
+            // Blitz's hit-test tree for mouse events — only standard HTML elements
+            // receive pointer events. All event handlers live on this wrapper div;
+            // the inner <canvas> is purely visual. Same pattern as Loki's PageTile.
+            // COLOR_SURFACE_BASE (#1e1e1e) — keep in sync with appthere-ui token.
+            style: "flex: 1; display: block; width: 100%; height: 100%; \
+                    position: relative; overflow: hidden; \
+                    background-color: #1e1e1e;",
+
+            onmounted: move |evt| {
+                // get_client_rect() returns the element's LOGICAL CSS size from
+                // Taffy final_layout (CSS pixels, not physical). Update shared_size
+                // as a fallback in case render() hasn't been called yet on first click.
+                // render() overwrites this with the same logical value (physical/scale)
+                // so both paths converge to the correct dimensions.
+                let size_mounted2 = size_mounted.clone();
+                spawn(async move {
+                    if let Ok(rect) = evt.get_client_rect().await {
+                        let rw = rect.width().round() as u32;
+                        let rh = rect.height().round() as u32;
+                        tracing::debug!(
+                            rw = rw,
+                            rh = rh,
+                            origin_x = rect.origin.x,
+                            origin_y = rect.origin.y,
+                            "canvas onmounted: logical CSS size"
+                        );
+                        if rw > 0 && rh > 0 {
+                            if let Ok(mut sz) = size_mounted2.try_lock() {
+                                *sz = (rw, rh);
+                            }
+                        }
+                    }
+                });
+            },
+
+            onmousedown: move |evt| {
+                let (w, h) = size_down.lock().map(|g| *g).unwrap_or((props.width, props.height));
+                let sp = screen_pos(&evt);
+                let doc = vp.read().screen_to_doc(sp, w, h);
+                let client = evt.client_coordinates();
+                tracing::debug!(
+                    client_x = client.x,
+                    client_y = client.y,
+                    elem_x = sp.x,
+                    elem_y = sp.y,
+                    rendered_w = w,
+                    rendered_h = h,
+                    doc_x = doc.x,
+                    doc_y = doc.y,
+                    "canvas_widget: onmousedown coordinate pipeline"
+                );
+                let button = evt.trigger_button().map(to_pointer_button)
+                    .unwrap_or(PointerButton::Primary);
+                on_down.call(ToolEvent::Down {
+                    doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0, button,
+                });
+            },
+
+            onmousemove: move |evt| {
+                if evt.held_buttons().contains(MouseButton::Primary) {
+                    let (w, h) = size_move.lock().map(|g| *g).unwrap_or((props.width, props.height));
+                    let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                    on_move.call(ToolEvent::Move {
+                        doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0,
+                    });
+                }
+            },
+
+            onmouseup: move |evt| {
+                let (w, h) = size_up.lock().map(|g| *g).unwrap_or((props.width, props.height));
+                let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                let button = evt.trigger_button().map(to_pointer_button)
+                    .unwrap_or(PointerButton::Primary);
+                on_up.call(ToolEvent::Up { doc_pos: doc, button });
+            },
+
+            // TODO(iris): SPEC.md §11.2 — onwheel requires blitz-shell to route
+            // MouseWheel events to Dioxus (currently they go to CSS scroll only).
+            // The handler logic below is correct; it will activate once blitz-shell
+            // is patched to call handle_ui_event for wheel events.
+            onwheel: move |evt| {
+                let (w, h) = size_wheel.lock().map(|g| *g).unwrap_or((props.width, props.height));
+                let delta = evt.delta().strip_units();
+                if evt.modifiers().ctrl() {
+                    let anchor = kurbo::Vec2::new(
+                        evt.element_coordinates().x,
+                        evt.element_coordinates().y,
+                    );
+                    let new_zoom = vp.read().zoom * (1.0 - delta.y as f32 * 0.001);
+                    vp.write().zoom_to(new_zoom, anchor, w, h);
+                } else {
+                    let zoom = vp.read().zoom as f64;
+                    let pan_delta = kurbo::Vec2::new(-delta.x / zoom, -delta.y / zoom);
+                    vp.write().pan += pan_delta;
+                    on_wheel.call(ToolEvent::Scroll {
+                        delta_x: delta.x as f32,
+                        delta_y: delta.y as f32,
+                    });
+                }
+            },
+
+            // TODO(iris): Phase 3 — touch/stylus events require dioxus-native-dom patch
+            // and blitz-shell multi-touch support. Add ontouchstart, ontouchmove,
+            // ontouchend + ToolEvent::Pinch when available.
+
+            // Canvas is purely visual — no event handlers.
             // "src" is not in Dioxus's canvas element schema but blitz-dom reads
             // it to associate a registered CustomPaintSource with this element.
-            "src": "{canvas_id}",
-            width: "{props.width}",
-            height: "{props.height}",
-            style: "display: block; width: {props.width}px; height: {props.height}px;",
+            // Blitz derives render() dimensions from CSS layout, not these HTML attrs.
+            canvas {
+                "src": "{canvas_id}",
+                style: "display: block; width: 100%; height: 100%;",
+            }
         }
     }
 }

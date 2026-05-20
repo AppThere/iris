@@ -9,64 +9,141 @@ use appthere_ui::tokens::spacing::{RADIUS_SM, SPACE_2};
 use appthere_ui::tokens::typography::{FONT_SIZE_LABEL, FONT_WEIGHT_SEMIBOLD};
 use dioxus::prelude::*;
 
-use crate::state::{AppState, ToolMode};
+use crate::state::{AppState, PixelTool, ToolMode};
 
-// TODO(iris): move TOOL_PALETTE_WIDTH to appthere_ui layout tokens
 const TOOL_PALETTE_WIDTH: f32 = 56.0;
 
 #[component]
 pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
-    let tool_mode = state.read().tool_mode;
+    let tool_mode    = state.read().tool_mode;
+    let pixel_tool   = state.read().active_pixel_tool;
+    let fg = state.read().foreground_color;
+    let bg = state.read().background_color;
 
-    let pixel_bg = if tool_mode == ToolMode::Pixel { COLOR_ACCENT_PRIMARY } else { COLOR_SURFACE_1 };
-    let vector_bg = if tool_mode == ToolMode::Vector { COLOR_ACCENT_PRIMARY } else { COLOR_SURFACE_1 };
+    let active_bg  = COLOR_ACCENT_PRIMARY;
+    let inactive_bg = COLOR_SURFACE_1;
 
-    let btn_style = |bg: &str| {
+    let btn = |active: bool| -> String {
+        let bg = if active { active_bg } else { inactive_bg };
         format!(
             "width: 100%; padding: {p}px 0; background-color: {bg}; \
              color: {fg}; border: none; border-radius: {r}px; cursor: pointer; \
              font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px;",
-            p      = SPACE_2,
-            bg     = bg,
-            fg     = COLOR_TEXT_ON_CHROME,
-            r      = RADIUS_SM,
-            size   = FONT_SIZE_LABEL,
-            weight = FONT_WEIGHT_SEMIBOLD,
+            p = SPACE_2, bg = bg, fg = COLOR_TEXT_ON_CHROME,
+            r = RADIUS_SM, size = FONT_SIZE_LABEL, weight = FONT_WEIGHT_SEMIBOLD,
         )
     };
-
-    let disabled_btn_style = format!(
+    let disabled = format!(
         "width: 100%; padding: {p}px 0; background-color: {bg}; \
          color: {fg}; border: none; border-radius: {r}px; cursor: not-allowed; \
          font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px; opacity: 0.5;",
-        p      = SPACE_2,
-        bg     = COLOR_SURFACE_1,
-        fg     = COLOR_TEXT_ON_CHROME_SECONDARY,
-        r      = RADIUS_SM,
-        size   = FONT_SIZE_LABEL,
-        weight = FONT_WEIGHT_SEMIBOLD,
+        p = SPACE_2, bg = COLOR_SURFACE_1, fg = COLOR_TEXT_ON_CHROME_SECONDARY,
+        r = RADIUS_SM, size = FONT_SIZE_LABEL, weight = FONT_WEIGHT_SEMIBOLD,
     );
+
+    let fg_css = srgb_css(fg);
+    let bg_css = srgb_css(bg);
+
+    let swatch_style = |color_css: &str| -> String {
+        format!(
+            "width: 36px; height: 18px; background-color: {color_css}; \
+             border: 1px solid {border}; border-radius: 2px; cursor: pointer; \
+             margin: 1px auto; display: block;",
+            color_css = color_css, border = COLOR_BORDER_CHROME,
+        )
+    };
 
     rsx! {
         div {
             style: "width: {TOOL_PALETTE_WIDTH}px; background-color: {COLOR_SURFACE_1}; \
                     display: flex; flex-direction: column; padding: {SPACE_2}px; \
                     border-right: 1px solid {COLOR_BORDER_CHROME}; flex-shrink: 0; box-sizing: border-box;",
+
+            // Mode selectors
             button {
-                style: btn_style(pixel_bg),
+                style: btn(tool_mode == ToolMode::Pixel),
                 onclick: move |_| state.write().tool_mode = ToolMode::Pixel,
                 "Px"
-                // TODO(iris): Phase 3 — SVG icon when appthere_ui ships Tabler Icons
             }
             button {
-                style: btn_style(vector_bg),
+                style: btn(tool_mode == ToolMode::Vector),
                 onclick: move |_| state.write().tool_mode = ToolMode::Vector,
                 "Vc"
             }
-            button { style: disabled_btn_style.clone(), disabled: true, "B" }
-            button { style: disabled_btn_style.clone(), disabled: true, "E" }
-            button { style: disabled_btn_style.clone(), disabled: true, "P" }
-            button { style: disabled_btn_style.clone(), disabled: true, "T" }
+
+            // Pixel sub-tool selectors
+            button {
+                style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Brush),
+                onclick: move |_| {
+                    state.write().tool_mode = ToolMode::Pixel;
+                    state.write().active_pixel_tool = PixelTool::Brush;
+                },
+                "B"
+            }
+            button {
+                style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Eraser),
+                onclick: move |_| {
+                    state.write().tool_mode = ToolMode::Pixel;
+                    state.write().active_pixel_tool = PixelTool::Eraser;
+                },
+                "E"
+            }
+            button {
+                style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Eyedropper),
+                onclick: move |_| {
+                    state.write().tool_mode = ToolMode::Pixel;
+                    state.write().active_pixel_tool = PixelTool::Eyedropper;
+                },
+                "I"
+            }
+            button {
+                style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Fill),
+                onclick: move |_| {
+                    state.write().tool_mode = ToolMode::Pixel;
+                    state.write().active_pixel_tool = PixelTool::Fill;
+                },
+                "F"
+            }
+            button {
+                style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Marquee),
+                onclick: move |_| {
+                    state.write().tool_mode = ToolMode::Pixel;
+                    state.write().active_pixel_tool = PixelTool::Marquee;
+                },
+                "M"
+            }
+            button { style: disabled.clone(), disabled: true, "T" }
+
+            // Colour swatches: foreground over background.
+            // Click either swatch to swap foreground ↔ background.
+            // TODO(iris): Phase 4 — click foreground swatch opens full colour picker
+            div {
+                style: "margin-top: {SPACE_2}px;",
+                button {
+                    style: swatch_style(&bg_css),
+                    title: "Background colour (click to swap)",
+                    onclick: move |_| swap_colors(&mut state),
+                }
+                button {
+                    style: swatch_style(&fg_css),
+                    title: "Foreground colour (click to swap)",
+                    onclick: move |_| swap_colors(&mut state),
+                }
+            }
         }
     }
+}
+
+/// Approximate linear RGBA → sRGB CSS `rgb(r,g,b)` for display in swatches.
+fn srgb_css(linear: [f32; 4]) -> String {
+    let to_u8 = |v: f32| (v.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8;
+    format!("rgb({},{},{})", to_u8(linear[0]), to_u8(linear[1]), to_u8(linear[2]))
+}
+
+fn swap_colors(state: &mut Signal<AppState>) {
+    let mut s = state.write();
+    let tmp = s.foreground_color;
+    s.foreground_color = s.background_color;
+    s.background_color = tmp;
+    s.pixel_tool_state.brush.settings.color = s.foreground_color;
 }
