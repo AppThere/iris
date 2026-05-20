@@ -64,6 +64,9 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
                 viewport: viewport_signal,
                 width: CANVAS_WIDTH,
                 height: CANVAS_HEIGHT,
+                on_tool_event: move |evt| {
+                    crate::tool_dispatch::dispatch_tool_event(evt, state);
+                },
             }
         }
     }

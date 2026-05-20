@@ -5,10 +5,12 @@ mod form;
 mod keyboard;
 mod mouse;
 mod touch;
+mod wheel;
 
 pub(crate) use form::{NativeFocusData, NativeFormData};
 pub(crate) use keyboard::BlitzKeyboardData;
 pub(crate) use mouse::NativeClickData;
+use wheel::NativeWheelData;
 
 use dioxus_html::{
     AnimationData, CancelData, ClipboardData, CompositionData, DragData, FocusData, FormData,
@@ -34,7 +36,16 @@ impl HtmlEventConverter for NativeConverter {
     fn convert_selection_data(&self, _: &PlatformEventData) -> SelectionData { unimplemented!() }
     fn convert_toggle_data(&self, _: &PlatformEventData) -> ToggleData { unimplemented!() }
     fn convert_transition_data(&self, _: &PlatformEventData) -> TransitionData { unimplemented!() }
-    fn convert_wheel_data(&self, _: &PlatformEventData) -> WheelData { unimplemented!() }
+    fn convert_wheel_data(&self, event: &PlatformEventData) -> WheelData {
+        // COMPAT(dioxus): blitz-shell 0.2.x does not route MouseWheel through
+        // Dioxus events; this converter is invoked only if a future blitz
+        // version adds wheel routing. Fall back to zero delta if no payload.
+        if let Some(w) = event.downcast::<NativeWheelData>() {
+            WheelData::new(w.clone())
+        } else {
+            WheelData::new(NativeWheelData { delta_x: 0.0, delta_y: 0.0 })
+        }
+    }
     fn convert_resize_data(&self, _: &PlatformEventData) -> ResizeData { unimplemented!() }
     fn convert_visible_data(&self, _: &PlatformEventData) -> VisibleData { unimplemented!() }
 

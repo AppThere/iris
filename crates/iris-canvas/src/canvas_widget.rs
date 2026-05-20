@@ -22,12 +22,14 @@
 
 use std::sync::{Arc, Mutex};
 
+use dioxus::html::input_data::MouseButton;
 use dioxus::native::use_wgpu;
 use dioxus::prelude::*;
 use iris_pixel::LayerTree;
 
 use crate::compositor::Compositor;
 use crate::paint_bridge::IrisCanvasPaintSource;
+use crate::tool_event::{PointerButton, ToolEvent};
 use crate::viewport::CanvasViewport;
 
 /// Props for the [`IrisCanvas`] component.
@@ -41,6 +43,28 @@ pub struct IrisCanvasProps {
     pub width: u32,
     /// Canvas height in CSS pixels.
     pub height: u32,
+    /// Called for every normalised tool event (down, move, up, scroll, pinch).
+    pub on_tool_event: EventHandler<ToolEvent>,
+}
+
+/// Convert CSS element-local coordinates from a mouse event to a `kurbo::Vec2`.
+///
+/// `element_coordinates()` returns the position relative to the element's
+/// top-left corner — the same coordinate space that `CanvasViewport::screen_to_doc`
+/// expects as its `screen` argument.
+fn screen_pos(evt: &Event<MouseData>) -> kurbo::Vec2 {
+    let p = evt.element_coordinates();
+    kurbo::Vec2::new(p.x, p.y)
+}
+
+/// Map a Dioxus `MouseButton` to the canvas-internal `PointerButton`.
+fn to_pointer_button(btn: MouseButton) -> PointerButton {
+    match btn {
+        MouseButton::Primary => PointerButton::Primary,
+        MouseButton::Secondary => PointerButton::Secondary,
+        MouseButton::Auxiliary => PointerButton::Middle,
+        _ => PointerButton::Primary,
+    }
 }
 
 /// Dioxus component for the Iris infinite canvas.
@@ -76,6 +100,14 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
         )
     });
 
+    // Clone EventHandler and copy lightweight values before moving into closures.
+    let mut vp = props.viewport;
+    let (w, h) = (props.width, props.height);
+    let on_down  = props.on_tool_event.clone();
+    let on_move  = props.on_tool_event.clone();
+    let on_up    = props.on_tool_event.clone();
+    let on_wheel = props.on_tool_event.clone();
+
     rsx! {
         canvas {
             // "src" is not in Dioxus's canvas element schema but blitz-dom reads
@@ -84,6 +116,61 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             width: "{props.width}",
             height: "{props.height}",
             style: "display: block; width: {props.width}px; height: {props.height}px;",
+
+            onmousedown: move |evt| {
+                let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                let button = evt.trigger_button().map(to_pointer_button)
+                    .unwrap_or(PointerButton::Primary);
+                on_down.call(ToolEvent::Down {
+                    doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0, button,
+                });
+            },
+
+            onmousemove: move |evt| {
+                if evt.held_buttons().contains(MouseButton::Primary) {
+                    let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                    on_move.call(ToolEvent::Move {
+                        doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0,
+                    });
+                }
+            },
+
+            onmouseup: move |evt| {
+                let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                let button = evt.trigger_button().map(to_pointer_button)
+                    .unwrap_or(PointerButton::Primary);
+                on_up.call(ToolEvent::Up { doc_pos: doc, button });
+            },
+
+            // TODO(iris): SPEC.md §11.2 — onwheel requires blitz-shell to route
+            // MouseWheel events to Dioxus (currently they go to CSS scroll only).
+            // The handler logic below is correct; it will activate once blitz-shell
+            // is patched to call handle_ui_event for wheel events.
+            onwheel: move |evt| {
+                let delta = evt.delta().strip_units();
+                if evt.modifiers().ctrl() {
+                    // Ctrl + scroll → zoom anchored at cursor.
+                    let anchor = kurbo::Vec2::new(
+                        evt.element_coordinates().x,
+                        evt.element_coordinates().y,
+                    );
+                    let new_zoom = vp.read().zoom * (1.0 - delta.y as f32 * 0.001);
+                    vp.write().zoom_to(new_zoom, anchor, w, h);
+                } else {
+                    // Plain scroll → pan.
+                    let zoom = vp.read().zoom as f64;
+                    let pan_delta = kurbo::Vec2::new(-delta.x / zoom, -delta.y / zoom);
+                    vp.write().pan += pan_delta;
+                    on_wheel.call(ToolEvent::Scroll {
+                        delta_x: delta.x as f32,
+                        delta_y: delta.y as f32,
+                    });
+                }
+            },
+
+            // TODO(iris): Phase 3 — touch/stylus events require dioxus-native-dom patch
+            // and blitz-shell multi-touch support. Add ontouchstart, ontouchmove,
+            // ontouchend + ToolEvent::Pinch when available.
         }
     }
 }
