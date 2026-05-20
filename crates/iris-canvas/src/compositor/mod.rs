@@ -82,6 +82,10 @@ impl Compositor {
         // Premultiplied linear-light f32 RGBA accumulation buffer.
         let mut acc = vec![0.0_f32; pixel_count * 4];
 
+        let doc_w = tree.canvas_width;
+        let doc_h = tree.canvas_height;
+        fill_document_background(&mut acc, viewport, width_px, height_px, doc_w, doc_h);
+
         let visible_rect = viewport.visible_doc_rect(width_px, height_px);
         let layers: Vec<_> = tree.iter_depth_first().collect();
 
@@ -216,6 +220,39 @@ fn blit_tile(
             acc[ob + 1] = sg * sa + acc[ob + 1] * inv;
             acc[ob + 2] = sb * sa + acc[ob + 2] * inv;
             acc[ob + 3] =    sa   + acc[ob + 3] * inv;
+        }
+    }
+}
+
+/// Fill the screen-space region corresponding to the document boundary with opaque white.
+///
+/// Called before layer compositing so painted tiles composite on top of the white
+/// background. Pixels outside the document boundary remain transparent (dark).
+fn fill_document_background(
+    acc: &mut [f32],
+    viewport: &CanvasViewport,
+    width_px: u32,
+    height_px: u32,
+    doc_w: u32,
+    doc_h: u32,
+) {
+    let top_left = viewport.doc_to_screen(kurbo::Vec2::new(0.0, 0.0), width_px, height_px);
+    let bottom_right = viewport.doc_to_screen(
+        kurbo::Vec2::new(doc_w as f64, doc_h as f64),
+        width_px, height_px,
+    );
+    let x0 = (top_left.x.floor() as i64).max(0) as usize;
+    let y0 = (top_left.y.floor() as i64).max(0) as usize;
+    let x1 = (bottom_right.x.ceil() as i64).min(width_px as i64) as usize;
+    let y1 = (bottom_right.y.ceil() as i64).min(height_px as i64) as usize;
+    for sy in y0..y1 {
+        for sx in x0..x1 {
+            let ob = (sy * width_px as usize + sx) * 4;
+            // Premultiplied opaque white: (1, 1, 1, 1).
+            acc[ob    ] = 1.0;
+            acc[ob + 1] = 1.0;
+            acc[ob + 2] = 1.0;
+            acc[ob + 3] = 1.0;
         }
     }
 }

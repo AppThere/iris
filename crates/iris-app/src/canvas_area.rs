@@ -9,9 +9,11 @@ use iris_pixel::LayerTree;
 
 use crate::state::AppState;
 
-// TODO(iris): SPEC.md §11.3 — measure actual CanvasArea dimensions via onmounted
-const CANVAS_WIDTH: u32 = 800;
-const CANVAS_HEIGHT: u32 = 600;
+// Document dimensions used for compositor and viewport initialisation.
+// TODO(iris): SPEC.md §11.3 — drive canvas_size from actual rendered element
+// dimensions once Blitz exposes element bounding-rect callbacks (onmounted).
+const DOC_WIDTH: u32 = 800;
+const DOC_HEIGHT: u32 = 600;
 
 #[component]
 pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
@@ -77,8 +79,8 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
             IrisCanvas {
                 tree: tree_signal,
                 viewport: viewport_signal,
-                width: CANVAS_WIDTH,
-                height: CANVAS_HEIGHT,
+                width: DOC_WIDTH,
+                height: DOC_HEIGHT,
                 on_tool_event: move |evt| {
                     crate::tool_dispatch::dispatch_tool_event(evt, state);
                 },
