@@ -144,7 +144,20 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
 
             onmousedown: move |evt| {
                 let (w, h) = *rendered_size.read();
-                let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
+                let sp = screen_pos(&evt);
+                let doc = vp.read().screen_to_doc(sp, w, h);
+                let client = evt.client_coordinates();
+                tracing::debug!(
+                    client_x = client.x,
+                    client_y = client.y,
+                    elem_x = sp.x,
+                    elem_y = sp.y,
+                    rendered_w = w,
+                    rendered_h = h,
+                    doc_x = doc.x,
+                    doc_y = doc.y,
+                    "canvas_widget: onmousedown coordinate pipeline"
+                );
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
                 on_down.call(ToolEvent::Down {

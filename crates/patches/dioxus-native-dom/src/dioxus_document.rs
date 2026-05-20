@@ -311,11 +311,25 @@ impl EventHandler for DioxusEventHandler<'_> {
             DomEventData::MouseMove(mevent)
             | DomEventData::MouseDown(mevent)
             | DomEventData::MouseUp(mevent)
-            | DomEventData::Click(mevent) => Some(wrap_event_data(NativeClickData {
-                element_x: mevent.x - target_origin.x,
-                element_y: mevent.y - target_origin.y,
-                inner: mevent.clone(),
-            })),
+            | DomEventData::Click(mevent) => {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(
+                    event = event.name(),
+                    target_node = event.target,
+                    raw_x = mevent.x,
+                    raw_y = mevent.y,
+                    origin_x = target_origin.x,
+                    origin_y = target_origin.y,
+                    elem_x = mevent.x - target_origin.x,
+                    elem_y = mevent.y - target_origin.y,
+                    "dioxus_document: mouse event coordinate pipeline"
+                );
+                Some(wrap_event_data(NativeClickData {
+                    element_x: mevent.x - target_origin.x,
+                    element_y: mevent.y - target_origin.y,
+                    inner: mevent.clone(),
+                }))
+            }
 
             DomEventData::KeyDown(kevent)
             | DomEventData::KeyUp(kevent)
