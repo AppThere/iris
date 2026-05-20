@@ -109,13 +109,12 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     let on_wheel = props.on_tool_event.clone();
 
     rsx! {
-        canvas {
-            // "src" is not in Dioxus's canvas element schema but blitz-dom reads
-            // it to associate a registered CustomPaintSource with this element.
-            "src": "{canvas_id}",
-            width: "{props.width}",
-            height: "{props.height}",
-            style: "display: block; width: {props.width}px; height: {props.height}px;",
+        div {
+            // COMPAT(blitz): custom paint canvas elements don't participate in
+            // Blitz's hit-test tree for mouse events — only standard HTML elements
+            // receive pointer events. All event handlers live on this wrapper div;
+            // the inner <canvas> is purely visual. Same pattern as Loki's PageTile.
+            style: "width: {props.width}px; height: {props.height}px; display: block; position: relative;",
 
             onmousedown: move |evt| {
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
@@ -149,7 +148,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             onwheel: move |evt| {
                 let delta = evt.delta().strip_units();
                 if evt.modifiers().ctrl() {
-                    // Ctrl + scroll → zoom anchored at cursor.
                     let anchor = kurbo::Vec2::new(
                         evt.element_coordinates().x,
                         evt.element_coordinates().y,
@@ -157,7 +155,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                     let new_zoom = vp.read().zoom * (1.0 - delta.y as f32 * 0.001);
                     vp.write().zoom_to(new_zoom, anchor, w, h);
                 } else {
-                    // Plain scroll → pan.
                     let zoom = vp.read().zoom as f64;
                     let pan_delta = kurbo::Vec2::new(-delta.x / zoom, -delta.y / zoom);
                     vp.write().pan += pan_delta;
@@ -171,6 +168,16 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // TODO(iris): Phase 3 — touch/stylus events require dioxus-native-dom patch
             // and blitz-shell multi-touch support. Add ontouchstart, ontouchmove,
             // ontouchend + ToolEvent::Pinch when available.
+
+            // Canvas is purely visual — no event handlers.
+            // "src" is not in Dioxus's canvas element schema but blitz-dom reads
+            // it to associate a registered CustomPaintSource with this element.
+            canvas {
+                "src": "{canvas_id}",
+                width: "{props.width}",
+                height: "{props.height}",
+                style: "display: block; width: {props.width}px; height: {props.height}px;",
+            }
         }
     }
 }
