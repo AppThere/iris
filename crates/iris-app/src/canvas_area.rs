@@ -16,7 +16,7 @@ const CANVAS_HEIGHT: u32 = 600;
 #[component]
 pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
     // All hooks called unconditionally before any early return (Dioxus rules).
-    let tree_signal = use_signal(move || {
+    let mut tree_signal = use_signal(move || {
         state
             .read()
             .document
@@ -38,6 +38,21 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
         let vp = viewport_signal.read().clone();
         if let Some(doc) = state.write().document.as_mut() {
             doc.viewport = vp;
+        }
+    });
+
+    // Sync tree_signal → IrisCanvas when a stroke has painted new tile data.
+    // canvas_dirty is set by tool_dispatch after each Down/Move/Up event.
+    use_effect(move || {
+        if state.read().canvas_dirty {
+            let new_tree = state
+                .read()
+                .document
+                .as_ref()
+                .map(|d| d.tree.clone())
+                .unwrap_or_else(|| LayerTree::new(1, 1, 96.0, 96.0));
+            *tree_signal.write() = new_tree;
+            state.write().canvas_dirty = false;
         }
     });
 

@@ -7,12 +7,23 @@ use iris_pixel::{
     BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, LayerTree,
     PixelLayer, TileCache, LINEAR_SRGB,
 };
+use iris_tools::{BrushEngine, EraserEngine};
+
+/// Active pixel-tool state, stored in AppState so dispatch_tool_event can mutate it.
+#[derive(Clone, Default)]
+pub struct PixelToolState {
+    pub brush: BrushEngine,
+    pub eraser: EraserEngine,
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub document: Option<OpenDocument>,
     pub tool_mode: ToolMode,
     pub selected_layer: Option<LayerId>,
+    pub pixel_tool_state: PixelToolState,
+    /// Set to `true` when a stroke dirties tiles; canvas_area.rs syncs tree_signal.
+    pub canvas_dirty: bool,
     pub active_tab_index: usize,
     pub platform: Platform,
 }
@@ -36,10 +47,15 @@ pub enum ToolMode {
 
 impl Default for AppState {
     fn default() -> Self {
+        let doc = OpenDocument::new_blank(800, 600, "Untitled");
+        // Auto-select the first (background) layer so the brush has a target immediately.
+        let selected_layer = doc.tree.root_layer_ids().first().copied();
         Self {
-            document: Some(OpenDocument::new_blank(800, 600, "Untitled")),
+            document: Some(doc),
             tool_mode: ToolMode::Pixel,
-            selected_layer: None,
+            selected_layer,
+            pixel_tool_state: PixelToolState::default(),
+            canvas_dirty: false,
             active_tab_index: 1,
             platform: detect_platform(),
         }
@@ -71,11 +87,17 @@ impl OpenDocument {
         };
         tree.add_layer(None, 0, layer)
             .expect("new_blank: adding initial layer to empty tree cannot fail");
+        // Centre the document in the canvas view at zoom 1:
+        // pan = doc centre so that (doc_w/2, doc_h/2) appears at screen centre.
+        // This ensures doc (0,0) is at the canvas top-left and all tile coords
+        // are positive when painting within the document bounds.
+        let mut viewport = CanvasViewport::new();
+        viewport.pan = kurbo::Vec2::new(width_px as f64 / 2.0, height_px as f64 / 2.0);
         Self {
             title: title.to_string(),
             path: None,
             tree,
-            viewport: CanvasViewport::new(),
+            viewport,
             dirty: false,
         }
     }
