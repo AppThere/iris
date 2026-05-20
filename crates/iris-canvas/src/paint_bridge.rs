@@ -71,6 +71,26 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         height: u32,
         scale: f64,
     ) -> Option<TextureHandle> {
+        // COMPAT(blitz): blitz-paint passes PHYSICAL pixel dimensions to render()
+        // (content_box.width() = layout.size.width * scale, per blitz-paint/render.rs).
+        // Event coordinates (element_coordinates()) are in LOGICAL CSS pixels (Winit
+        // logical cursor position minus Taffy absolute_position, both in CSS px).
+        // Divide by scale to get the logical canvas size that screen_to_doc() expects.
+        let logical_w = ((width as f64) / scale.max(1.0)).round() as u32;
+        let logical_h = ((height as f64) / scale.max(1.0)).round() as u32;
+        // Write logical size first — must succeed even if compositing fails later.
+        if let Ok(mut sz) = self.rendered_size.try_lock() {
+            *sz = (logical_w, logical_h);
+        }
+        tracing::debug!(
+            physical_w = width,
+            physical_h = height,
+            scale = scale,
+            logical_w = logical_w,
+            logical_h = logical_h,
+            "IrisCanvasPaintSource::render size"
+        );
+
         let dh = self.device_handle.as_ref()?;
 
         if let Some(old) = self.last_handle.take() {
@@ -83,12 +103,6 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         let tree_guard = self.tree.lock().ok()?;
         let compositor_guard = self.compositor.lock().ok()?;
 
-        // Record the Blitz-reported dimensions so event handlers always use
-        // the same coordinate space as the compositor, even on the first click.
-        if let Ok(mut sz) = self.rendered_size.try_lock() {
-            *sz = (width, height);
-        }
-
         // CPU composite path: uses queue.write_texture() rather than a CommandEncoder
         // submission. Submitting a CommandEncoder here corrupts Vello's in-progress encoder,
         // causing the "Encoder is invalid" crash.
@@ -100,9 +114,6 @@ impl CustomPaintSource for IrisCanvasPaintSource {
 
         drop(compositor_guard);
         drop(tree_guard);
-
-        // scale is passed through for future use; current compositor uses width/height directly.
-        let _ = scale;
 
         let handle = ctx.register_texture(texture);
         self.last_handle = Some(handle.clone());

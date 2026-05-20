@@ -115,10 +115,11 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     let on_up    = props.on_tool_event.clone();
     let on_wheel = props.on_tool_event.clone();
     // Clone Arc once per closure — Arc is Clone, not Copy.
-    let size_down  = shared_size.clone();
-    let size_move  = shared_size.clone();
-    let size_up    = shared_size.clone();
-    let size_wheel = shared_size.clone();
+    let size_down    = shared_size.clone();
+    let size_move    = shared_size.clone();
+    let size_up      = shared_size.clone();
+    let size_wheel   = shared_size.clone();
+    let size_mounted = shared_size.clone();
 
     rsx! {
         div {
@@ -132,17 +133,28 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                     background-color: #1e1e1e;",
 
             onmounted: move |evt| {
-                // Log the mounted dimensions for diagnostics. The authoritative
-                // size for event handling comes from shared_size (written each
-                // frame by the paint source), not from this callback.
+                // get_client_rect() returns the element's LOGICAL CSS size from
+                // Taffy final_layout (CSS pixels, not physical). Update shared_size
+                // as a fallback in case render() hasn't been called yet on first click.
+                // render() overwrites this with the same logical value (physical/scale)
+                // so both paths converge to the correct dimensions.
+                let size_mounted2 = size_mounted.clone();
                 spawn(async move {
                     if let Ok(rect) = evt.get_client_rect().await {
                         let rw = rect.width().round() as u32;
                         let rh = rect.height().round() as u32;
                         tracing::debug!(
-                            "canvas onmounted: rect origin=({:.0},{:.0}) size={}×{}",
-                            rect.origin.x, rect.origin.y, rw, rh,
+                            rw = rw,
+                            rh = rh,
+                            origin_x = rect.origin.x,
+                            origin_y = rect.origin.y,
+                            "canvas onmounted: logical CSS size"
                         );
+                        if rw > 0 && rh > 0 {
+                            if let Ok(mut sz) = size_mounted2.try_lock() {
+                                *sz = (rw, rh);
+                            }
+                        }
                     }
                 });
             },
