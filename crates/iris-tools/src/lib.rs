@@ -10,6 +10,10 @@
 
 pub mod brush;
 pub mod eraser;
+pub mod eyedropper;
+pub mod fill;
 
 pub use brush::{BrushEngine, BrushSettings};
 pub use eraser::EraserEngine;
+pub use eyedropper::sample_color;
+pub use fill::flood_fill;

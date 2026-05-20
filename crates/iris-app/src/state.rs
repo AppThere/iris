@@ -7,21 +7,55 @@ use iris_pixel::{
     BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, LayerTree,
     PixelLayer, TileCache, LINEAR_SRGB,
 };
-use iris_tools::{BrushEngine, EraserEngine};
+use iris_tools::{BrushEngine, BrushSettings, EraserEngine};
+
+/// Which pixel sub-tool is active within [`ToolMode::Pixel`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PixelTool {
+    #[default]
+    Brush,
+    Eraser,
+    Eyedropper,
+    Fill,
+    Marquee,
+}
+
+/// Active marquee selection in document space. `None` = no selection (paint everywhere).
+#[derive(Debug, Clone, Default)]
+pub struct Selection {
+    pub rect: Option<kurbo::Rect>,
+}
 
 /// Active pixel-tool state, stored in AppState so dispatch_tool_event can mutate it.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct PixelToolState {
     pub brush: BrushEngine,
     pub eraser: EraserEngine,
+    /// Flood-fill colour-similarity threshold (0.0–1.0 Euclidean RGB distance).
+    pub fill_tolerance: f32,
+}
+
+impl Default for PixelToolState {
+    fn default() -> Self {
+        Self { brush: BrushEngine::default(), eraser: EraserEngine::default(), fill_tolerance: 0.1 }
+    }
 }
 
 #[derive(Clone)]
 pub struct AppState {
     pub document: Option<OpenDocument>,
     pub tool_mode: ToolMode,
+    pub active_pixel_tool: PixelTool,
     pub selected_layer: Option<LayerId>,
     pub pixel_tool_state: PixelToolState,
+    /// Foreground (paint) colour in linear RGBA. Default: opaque black.
+    pub foreground_color: [f32; 4],
+    /// Background colour in linear RGBA. Default: opaque white.
+    pub background_color: [f32; 4],
+    /// Current marquee selection (document pixels). Updated by the Marquee tool.
+    pub selection: Selection,
+    /// Drag origin for the marquee tool; cleared on ToolEvent::Up.
+    pub marquee_start: Option<kurbo::Vec2>,
     /// Set to `true` when a stroke dirties tiles; canvas_area.rs syncs tree_signal.
     pub canvas_dirty: bool,
     pub active_tab_index: usize,
@@ -48,13 +82,17 @@ pub enum ToolMode {
 impl Default for AppState {
     fn default() -> Self {
         let doc = OpenDocument::new_blank(800, 600, "Untitled");
-        // Auto-select the first (background) layer so the brush has a target immediately.
         let selected_layer = doc.tree.root_layer_ids().first().copied();
         Self {
             document: Some(doc),
             tool_mode: ToolMode::Pixel,
+            active_pixel_tool: PixelTool::Brush,
             selected_layer,
             pixel_tool_state: PixelToolState::default(),
+            foreground_color: [0.0, 0.0, 0.0, 1.0],
+            background_color: [1.0, 1.0, 1.0, 1.0],
+            selection: Selection::default(),
+            marquee_start: None,
             canvas_dirty: false,
             active_tab_index: 1,
             platform: detect_platform(),
@@ -87,19 +125,9 @@ impl OpenDocument {
         };
         tree.add_layer(None, 0, layer)
             .expect("new_blank: adding initial layer to empty tree cannot fail");
-        // Centre the document in the canvas view at zoom 1:
-        // pan = doc centre so that (doc_w/2, doc_h/2) appears at screen centre.
-        // This ensures doc (0,0) is at the canvas top-left and all tile coords
-        // are positive when painting within the document bounds.
         let mut viewport = CanvasViewport::new();
         viewport.pan = kurbo::Vec2::new(width_px as f64 / 2.0, height_px as f64 / 2.0);
-        Self {
-            title: title.to_string(),
-            path: None,
-            tree,
-            viewport,
-            dirty: false,
-        }
+        Self { title: title.to_string(), path: None, tree, viewport, dirty: false }
     }
 
     pub fn zoom_percent(&self) -> u32 {
