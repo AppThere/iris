@@ -127,11 +127,16 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                 // Fires on the second poll() after initial_build so final_layout is valid.
                 spawn(async move {
                     if let Ok(rect) = evt.get_client_rect().await {
+                        // rect.origin = (0,0) by BlitzMountedData construction;
+                        // rect.width()/height() return size.width/height only.
                         let rw = rect.width().round() as u32;
                         let rh = rect.height().round() as u32;
+                        tracing::debug!(
+                            "canvas onmounted: rect origin=({:.0},{:.0}) size={}×{} → rendered_size={}×{}",
+                            rect.origin.x, rect.origin.y, rw, rh, rw, rh,
+                        );
                         if rw > 0 && rh > 0 {
                             rendered_size.set((rw, rh));
-                            tracing::debug!("canvas onmounted: rendered_size={}×{}", rw, rh);
                         }
                     }
                 });
