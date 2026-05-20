@@ -81,6 +81,14 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     let shared_viewport = use_hook(|| Arc::new(Mutex::new(props.viewport.peek().clone())));
     let shared_tree = use_hook(|| Arc::new(Mutex::new(props.tree.peek().clone())));
 
+    // shared_size: written by the paint source on every render() call with the
+    // Blitz-reported canvas dimensions. Event handlers read from this so they
+    // always use the same coordinate space as the compositor.
+    // Initialised from props as a fallback for the window between component
+    // creation and the first compositor render (in practice, never hit since
+    // Blitz paints before the window is interactive).
+    let shared_size = use_hook(|| Arc::new(Mutex::new((props.width, props.height))));
+
     // Sync signal values into shared state on every re-render.
     if let Ok(mut vp) = shared_viewport.try_lock() {
         *vp = props.viewport.read().clone();
@@ -97,19 +105,20 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             compositor.clone(),
             shared_viewport.clone(),
             shared_tree.clone(),
+            shared_size.clone(),
         )
     });
-
-    // rendered_size tracks the actual rendered pixel dimensions of the wrapper div.
-    // Initialised from props (window-minus-chrome estimate); updated on the first
-    // onmounted callback after layout has run, giving exact Blitz layout dimensions.
-    let mut rendered_size = use_signal(|| (props.width, props.height));
 
     let mut vp = props.viewport;
     let on_down  = props.on_tool_event.clone();
     let on_move  = props.on_tool_event.clone();
     let on_up    = props.on_tool_event.clone();
     let on_wheel = props.on_tool_event.clone();
+    // Clone Arc once per closure — Arc is Clone, not Copy.
+    let size_down  = shared_size.clone();
+    let size_move  = shared_size.clone();
+    let size_up    = shared_size.clone();
+    let size_wheel = shared_size.clone();
 
     rsx! {
         div {
@@ -123,27 +132,23 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                     background-color: #1e1e1e;",
 
             onmounted: move |evt| {
-                // Read the actual rendered size from the Blitz layout system.
-                // Fires on the second poll() after initial_build so final_layout is valid.
+                // Log the mounted dimensions for diagnostics. The authoritative
+                // size for event handling comes from shared_size (written each
+                // frame by the paint source), not from this callback.
                 spawn(async move {
                     if let Ok(rect) = evt.get_client_rect().await {
-                        // rect.origin = (0,0) by BlitzMountedData construction;
-                        // rect.width()/height() return size.width/height only.
                         let rw = rect.width().round() as u32;
                         let rh = rect.height().round() as u32;
                         tracing::debug!(
-                            "canvas onmounted: rect origin=({:.0},{:.0}) size={}×{} → rendered_size={}×{}",
-                            rect.origin.x, rect.origin.y, rw, rh, rw, rh,
+                            "canvas onmounted: rect origin=({:.0},{:.0}) size={}×{}",
+                            rect.origin.x, rect.origin.y, rw, rh,
                         );
-                        if rw > 0 && rh > 0 {
-                            rendered_size.set((rw, rh));
-                        }
                     }
                 });
             },
 
             onmousedown: move |evt| {
-                let (w, h) = *rendered_size.read();
+                let (w, h) = size_down.lock().map(|g| *g).unwrap_or((props.width, props.height));
                 let sp = screen_pos(&evt);
                 let doc = vp.read().screen_to_doc(sp, w, h);
                 let client = evt.client_coordinates();
@@ -167,7 +172,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
 
             onmousemove: move |evt| {
                 if evt.held_buttons().contains(MouseButton::Primary) {
-                    let (w, h) = *rendered_size.read();
+                    let (w, h) = size_move.lock().map(|g| *g).unwrap_or((props.width, props.height));
                     let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                     on_move.call(ToolEvent::Move {
                         doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0,
@@ -176,7 +181,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             },
 
             onmouseup: move |evt| {
-                let (w, h) = *rendered_size.read();
+                let (w, h) = size_up.lock().map(|g| *g).unwrap_or((props.width, props.height));
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
@@ -188,7 +193,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // The handler logic below is correct; it will activate once blitz-shell
             // is patched to call handle_ui_event for wheel events.
             onwheel: move |evt| {
-                let (w, h) = *rendered_size.read();
+                let (w, h) = size_wheel.lock().map(|g| *g).unwrap_or((props.width, props.height));
                 let delta = evt.delta().strip_units();
                 if evt.modifiers().ctrl() {
                     let anchor = kurbo::Vec2::new(

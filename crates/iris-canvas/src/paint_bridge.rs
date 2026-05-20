@@ -26,13 +26,19 @@ use crate::viewport::CanvasViewport;
 /// Bridges [`Compositor`] into `anyrender_vello::CustomPaintSource` so that
 /// Dioxus Native's `use_wgpu` hook can drive the Iris render pipeline.
 ///
-/// `viewport` and `tree` are `Arc<Mutex<…>>` shared with the `IrisCanvas`
-/// component body, which updates them on every re-render. The Blitz paint
-/// loop calls `render()` independently; no Dioxus reactive context is needed.
+/// `viewport`, `tree`, and `rendered_size` are `Arc<Mutex<…>>` shared with
+/// the `IrisCanvas` component body. The Blitz paint loop calls `render()`
+/// independently; no Dioxus reactive context is needed.
+///
+/// `rendered_size` is written on every `render()` call with the true Blitz
+/// layout dimensions, ensuring event handlers always see the correct size
+/// regardless of when `onmounted` fires relative to the first click.
 pub(crate) struct IrisCanvasPaintSource {
     compositor: Arc<Mutex<Compositor>>,
     viewport: Arc<Mutex<CanvasViewport>>,
     tree: Arc<Mutex<LayerTree>>,
+    /// Written each frame by `render()` with the Blitz-reported canvas size.
+    rendered_size: Arc<Mutex<(u32, u32)>>,
     device_handle: Option<DeviceHandle>,
     last_handle: Option<TextureHandle>,
 }
@@ -42,8 +48,9 @@ impl IrisCanvasPaintSource {
         compositor: Arc<Mutex<Compositor>>,
         viewport: Arc<Mutex<CanvasViewport>>,
         tree: Arc<Mutex<LayerTree>>,
+        rendered_size: Arc<Mutex<(u32, u32)>>,
     ) -> Self {
-        Self { compositor, viewport, tree, device_handle: None, last_handle: None }
+        Self { compositor, viewport, tree, rendered_size, device_handle: None, last_handle: None }
     }
 }
 
@@ -75,6 +82,12 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         let viewport = self.viewport.lock().ok()?.clone();
         let tree_guard = self.tree.lock().ok()?;
         let compositor_guard = self.compositor.lock().ok()?;
+
+        // Record the Blitz-reported dimensions so event handlers always use
+        // the same coordinate space as the compositor, even on the first click.
+        if let Ok(mut sz) = self.rendered_size.try_lock() {
+            *sz = (width, height);
+        }
 
         // CPU composite path: uses queue.write_texture() rather than a CommandEncoder
         // submission. Submitting a CommandEncoder here corrupts Vello's in-progress encoder,
