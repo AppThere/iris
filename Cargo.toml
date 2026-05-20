@@ -80,6 +80,11 @@ blitz-dom = { path = "crates/patches/blitz-dom" }
 # PATCH: forwards WindowEvent::Touch to Dioxus touch handlers.
 # Remove when blitz-shell implements touch natively.
 blitz-shell = { path = "crates/patches/blitz-shell" }
+# PATCH: handle SurfaceError::Outdated/Lost gracefully on Windows/DX12.
+# Without this, registering a CustomPaintSource via use_wgpu panics on the
+# first render cycle when the swap chain is not yet ready. Remove when
+# wgpu_context upstream fixes the TODO at surface_renderer.rs:228.
+wgpu_context = { path = "crates/patches/wgpu-context" }
 
 [profile.dev]
 opt-level = 1          # faster compiles, still debuggable
