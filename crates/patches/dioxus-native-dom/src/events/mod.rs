@@ -12,14 +12,44 @@ pub(crate) use keyboard::BlitzKeyboardData;
 pub(crate) use mouse::NativeClickData;
 use wheel::NativeWheelData;
 
+use std::future::Future;
+use std::pin::Pin;
+
 use dioxus_html::{
+    geometry::{euclid, Pixels, PixelsRect},
     AnimationData, CancelData, ClipboardData, CompositionData, DragData, FocusData, FormData,
-    HtmlEventConverter, ImageData, KeyboardData, MediaData, MountedData, MouseData,
-    PlatformEventData, PointerData, ResizeData, ScrollData, SelectionData, ToggleData, TouchData,
-    TransitionData, VisibleData, WheelData,
+    HtmlEventConverter, ImageData, KeyboardData, MediaData, MountedData, MountedResult,
+    MouseData, PlatformEventData, PointerData, RenderedElementBacking, ResizeData, ScrollData,
+    SelectionData, ToggleData, TouchData, TransitionData, VisibleData, WheelData,
 };
 use keyboard_types::Modifiers;
 use touch::{NativeTouchData, NativeTouchPoint};
+
+/// Platform-side mounted data for the Blitz renderer.
+///
+/// Created by [`DioxusDocument::poll`] after layout has been computed for the
+/// mounted element, so [`get_client_rect`] returns the post-layout border-box
+/// size. Origin is set to (0, 0); absolute position traversal is a TODO.
+///
+/// [`get_client_rect`]: BlitzMountedData::get_client_rect
+#[derive(Clone)]
+pub(crate) struct BlitzMountedData {
+    /// Border-box size of the mounted element after the preceding layout pass.
+    pub(crate) rect: PixelsRect,
+}
+
+impl RenderedElementBacking for BlitzMountedData {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn get_client_rect(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = MountedResult<PixelsRect>>>> {
+        let rect = self.rect;
+        Box::pin(async move { Ok(rect) })
+    }
+}
 
 pub struct NativeConverter {}
 
@@ -31,7 +61,15 @@ impl HtmlEventConverter for NativeConverter {
     fn convert_drag_data(&self, _: &PlatformEventData) -> DragData { unimplemented!() }
     fn convert_image_data(&self, _: &PlatformEventData) -> ImageData { unimplemented!() }
     fn convert_media_data(&self, _: &PlatformEventData) -> MediaData { unimplemented!() }
-    fn convert_mounted_data(&self, _: &PlatformEventData) -> MountedData { unimplemented!() }
+
+    fn convert_mounted_data(&self, event: &PlatformEventData) -> MountedData {
+        // COMPAT(blitz): PlatformEventData wraps BlitzMountedData when fired from
+        // DioxusDocument::poll after layout; downcast and forward the rect.
+        event.downcast::<BlitzMountedData>()
+            .map(|d| MountedData::from(d.clone()))
+            .unwrap_or_else(|| MountedData::from(()))
+    }
+
     fn convert_scroll_data(&self, _: &PlatformEventData) -> ScrollData { unimplemented!() }
     fn convert_selection_data(&self, _: &PlatformEventData) -> SelectionData { unimplemented!() }
     fn convert_toggle_data(&self, _: &PlatformEventData) -> ToggleData { unimplemented!() }
@@ -92,4 +130,16 @@ impl HtmlEventConverter for NativeConverter {
             })
         }
     }
+}
+
+/// Build a [`PixelsRect`] with origin (0, 0) and the given border-box dimensions.
+///
+/// Origin is set to zero because absolute-position traversal (summing parent
+/// `final_layout.location` values) is not yet implemented.
+/// TODO(iris): SPEC.md §11.3 — compute absolute origin by walking ancestor chain.
+pub(crate) fn make_pixels_rect(width: f32, height: f32) -> PixelsRect {
+    euclid::Rect::new(
+        euclid::Point2D::<f64, Pixels>::new(0.0, 0.0),
+        euclid::Size2D::<f64, Pixels>::new(width as f64, height as f64),
+    )
 }

@@ -100,12 +100,11 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
         )
     });
 
-    // props.width/height = computed rendered size of the canvas area (window minus chrome).
-    // These are used for both the GPU texture size (passed to <canvas>) and the
-    // coordinate transform (screen_to_doc). Document dimensions come from the tree.
-    // TODO(iris): SPEC.md §11.3 — replace with get_client_rect() once dioxus-native-dom
-    // implements RenderedElementBacking::get_client_rect via blitz_dom Node::final_layout.
-    let (w, h) = (props.width, props.height);
+    // rendered_size tracks the actual rendered pixel dimensions of the wrapper div.
+    // Initialised from props (window-minus-chrome estimate); updated on the first
+    // onmounted callback after layout has run, giving exact Blitz layout dimensions.
+    let mut rendered_size = use_signal(|| (props.width, props.height));
+
     let mut vp = props.viewport;
     let on_down  = props.on_tool_event.clone();
     let on_move  = props.on_tool_event.clone();
@@ -123,7 +122,23 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                     position: relative; overflow: hidden; \
                     background-color: #1e1e1e;",
 
+            onmounted: move |evt| {
+                // Read the actual rendered size from the Blitz layout system.
+                // Fires on the second poll() after initial_build so final_layout is valid.
+                spawn(async move {
+                    if let Ok(rect) = evt.get_client_rect().await {
+                        let rw = rect.width().round() as u32;
+                        let rh = rect.height().round() as u32;
+                        if rw > 0 && rh > 0 {
+                            rendered_size.set((rw, rh));
+                            tracing::debug!("canvas onmounted: rendered_size={}×{}", rw, rh);
+                        }
+                    }
+                });
+            },
+
             onmousedown: move |evt| {
+                let (w, h) = *rendered_size.read();
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
@@ -134,6 +149,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
 
             onmousemove: move |evt| {
                 if evt.held_buttons().contains(MouseButton::Primary) {
+                    let (w, h) = *rendered_size.read();
                     let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                     on_move.call(ToolEvent::Move {
                         doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0,
@@ -142,6 +158,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             },
 
             onmouseup: move |evt| {
+                let (w, h) = *rendered_size.read();
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
@@ -153,6 +170,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // The handler logic below is correct; it will activate once blitz-shell
             // is patched to call handle_ui_event for wheel events.
             onwheel: move |evt| {
+                let (w, h) = *rendered_size.read();
                 let delta = evt.delta().strip_units();
                 if evt.modifiers().ctrl() {
                     let anchor = kurbo::Vec2::new(
@@ -179,12 +197,10 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // Canvas is purely visual — no event handlers.
             // "src" is not in Dioxus's canvas element schema but blitz-dom reads
             // it to associate a registered CustomPaintSource with this element.
-            // width/height here set the GPU texture dimensions Blitz calls render() with.
+            // Blitz derives render() dimensions from CSS layout, not these HTML attrs.
             canvas {
                 "src": "{canvas_id}",
-                width: "{w}",
-                height: "{h}",
-                style: "display: block; width: {w}px; height: {h}px;",
+                style: "display: block; width: 100%; height: 100%;",
             }
         }
     }
