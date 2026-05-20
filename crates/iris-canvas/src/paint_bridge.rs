@@ -109,7 +109,7 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         // TODO(iris): Phase 4 — replace with GPU compute path that follows Loki's
         // render_to_texture() pattern so work is submitted through Vello's encoder.
         let texture = compositor_guard
-            .composite_to_texture(&tree_guard, &viewport, width, height, &dh.device, &dh.queue)
+            .composite_to_texture(&tree_guard, &viewport, width, height, scale, &dh.device, &dh.queue)
             .ok()?;
 
         drop(compositor_guard);

@@ -75,18 +75,29 @@ impl Compositor {
         viewport: &CanvasViewport,
         width_px: u32,
         height_px: u32,
+        // COMPAT(blitz): blitz-paint passes physical pixel dimensions; scale is the
+        // DPI factor. Viewport transforms must use logical (CSS) dimensions so they
+        // match screen_to_doc() in the event handler. Pixel placement uses physical.
+        scale: f64,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<wgpu::Texture, CompositorError> {
+        let logical_w = ((width_px as f64) / scale.max(1.0)).round() as u32;
+        let logical_h = ((height_px as f64) / scale.max(1.0)).round() as u32;
+
         let pixel_count = (width_px * height_px) as usize;
         // Premultiplied linear-light f32 RGBA accumulation buffer.
         let mut acc = vec![0.0_f32; pixel_count * 4];
 
         let doc_w = tree.canvas_width;
         let doc_h = tree.canvas_height;
-        fill_document_background(&mut acc, viewport, width_px, height_px, doc_w, doc_h);
+        fill_document_background(
+            &mut acc, viewport,
+            width_px, height_px, logical_w, logical_h,
+            doc_w, doc_h,
+        );
 
-        let visible_rect = viewport.visible_doc_rect(width_px, height_px);
+        let visible_rect = viewport.visible_doc_rect(logical_w, logical_h);
         let layers: Vec<_> = tree.iter_depth_first().collect();
 
         for layer in layers.iter().rev() {
@@ -110,7 +121,9 @@ impl Compositor {
                         blit_tile(
                             &mut acc, tile_data, tx, ty,
                             offset_x, offset_y,
-                            viewport, width_px, height_px, layer.opacity,
+                            viewport,
+                            width_px, height_px, logical_w, logical_h,
+                            layer.opacity,
                         );
                     }
                     // Absent tile = transparent = no contribution to composite.
@@ -191,9 +204,12 @@ fn blit_tile(
     tx: u32, ty: u32,
     offset_x: f64, offset_y: f64,
     viewport: &CanvasViewport,
-    width_px: u32, height_px: u32,
+    physical_w: u32, physical_h: u32,
+    logical_w: u32, logical_h: u32,
     opacity: f32,
 ) {
+    let scale_x = physical_w as f64 / logical_w as f64;
+    let scale_y = physical_h as f64 / logical_h as f64;
     let ts = TILE_SIZE as usize;
     let bytes = &tile_data.0;
     for py in 0..ts {
@@ -202,10 +218,10 @@ fn blit_tile(
                 offset_x + (tx as f64 * ts as f64) + px_local as f64 + 0.5,
                 offset_y + (ty as f64 * ts as f64) + py as f64 + 0.5,
             );
-            let screen = viewport.doc_to_screen(doc, width_px, height_px);
-            let sx = screen.x as i64;
-            let sy = screen.y as i64;
-            if sx < 0 || sy < 0 || sx >= width_px as i64 || sy >= height_px as i64 {
+            let screen = viewport.doc_to_screen(doc, logical_w, logical_h);
+            let sx = (screen.x * scale_x) as i64;
+            let sy = (screen.y * scale_y) as i64;
+            if sx < 0 || sy < 0 || sx >= physical_w as i64 || sy >= physical_h as i64 {
                 continue;
             }
             let ib = (py * ts + px_local) * 8; // 4 channels × 2 bytes per f16
@@ -213,7 +229,7 @@ fn blit_tile(
             let sg = f16_to_f32(u16::from_le_bytes([bytes[ib + 2], bytes[ib + 3]]));
             let sb = f16_to_f32(u16::from_le_bytes([bytes[ib + 4], bytes[ib + 5]]));
             let sa = f16_to_f32(u16::from_le_bytes([bytes[ib + 6], bytes[ib + 7]])) * opacity;
-            let ob = (sy as usize * width_px as usize + sx as usize) * 4;
+            let ob = (sy as usize * physical_w as usize + sx as usize) * 4;
             let inv = 1.0 - sa;
             // Porter-Duff "over": dst = src_premul + dst × (1 − src_alpha)
             acc[ob    ] = sr * sa + acc[ob    ] * inv;
@@ -231,23 +247,26 @@ fn blit_tile(
 fn fill_document_background(
     acc: &mut [f32],
     viewport: &CanvasViewport,
-    width_px: u32,
-    height_px: u32,
+    physical_w: u32, physical_h: u32,
+    logical_w: u32, logical_h: u32,
     doc_w: u32,
     doc_h: u32,
 ) {
-    let top_left = viewport.doc_to_screen(kurbo::Vec2::new(0.0, 0.0), width_px, height_px);
+    let scale_x = physical_w as f64 / logical_w as f64;
+    let scale_y = physical_h as f64 / logical_h as f64;
+    // Use logical dims for transform; scale to physical pixel coords.
+    let top_left = viewport.doc_to_screen(kurbo::Vec2::new(0.0, 0.0), logical_w, logical_h);
     let bottom_right = viewport.doc_to_screen(
         kurbo::Vec2::new(doc_w as f64, doc_h as f64),
-        width_px, height_px,
+        logical_w, logical_h,
     );
-    let x0 = (top_left.x.floor() as i64).max(0) as usize;
-    let y0 = (top_left.y.floor() as i64).max(0) as usize;
-    let x1 = (bottom_right.x.ceil() as i64).min(width_px as i64) as usize;
-    let y1 = (bottom_right.y.ceil() as i64).min(height_px as i64) as usize;
+    let x0 = ((top_left.x * scale_x).floor() as i64).max(0) as usize;
+    let y0 = ((top_left.y * scale_y).floor() as i64).max(0) as usize;
+    let x1 = ((bottom_right.x * scale_x).ceil() as i64).min(physical_w as i64) as usize;
+    let y1 = ((bottom_right.y * scale_y).ceil() as i64).min(physical_h as i64) as usize;
     for sy in y0..y1 {
         for sx in x0..x1 {
-            let ob = (sy * width_px as usize + sx) * 4;
+            let ob = (sy * physical_w as usize + sx) * 4;
             // Premultiplied opaque white: (1, 1, 1, 1).
             acc[ob    ] = 1.0;
             acc[ob + 1] = 1.0;
