@@ -100,15 +100,13 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
         )
     });
 
-    // Clone EventHandler and copy lightweight values before moving into closures.
+    // props.width/height = computed rendered size of the canvas area (window minus chrome).
+    // These are used for both the GPU texture size (passed to <canvas>) and the
+    // coordinate transform (screen_to_doc). Document dimensions come from the tree.
+    // TODO(iris): SPEC.md §11.3 — replace with get_client_rect() once dioxus-native-dom
+    // implements RenderedElementBacking::get_client_rect via blitz_dom Node::final_layout.
+    let (w, h) = (props.width, props.height);
     let mut vp = props.viewport;
-    // rendered_size tracks the actual CSS pixel dimensions of the wrapper div.
-    // TODO(iris): SPEC.md §11.3 — update rendered_size via onmounted/onresize when
-    // Blitz exposes element bounding-rect callbacks; for now initialise from props
-    // so transforms use the correct document dimensions at zoom=1.
-    let rendered_size = use_signal(|| (props.width, props.height));
-    let doc_w = props.width;
-    let doc_h = props.height;
     let on_down  = props.on_tool_event.clone();
     let on_move  = props.on_tool_event.clone();
     let on_up    = props.on_tool_event.clone();
@@ -126,7 +124,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
                     background-color: #1e1e1e;",
 
             onmousedown: move |evt| {
-                let (w, h) = *rendered_size.read();
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
@@ -137,7 +134,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
 
             onmousemove: move |evt| {
                 if evt.held_buttons().contains(MouseButton::Primary) {
-                    let (w, h) = *rendered_size.read();
                     let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                     on_move.call(ToolEvent::Move {
                         doc_pos: doc, pressure: 1.0, tilt_x: 0.0, tilt_y: 0.0,
@@ -146,7 +142,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             },
 
             onmouseup: move |evt| {
-                let (w, h) = *rendered_size.read();
                 let doc = vp.read().screen_to_doc(screen_pos(&evt), w, h);
                 let button = evt.trigger_button().map(to_pointer_button)
                     .unwrap_or(PointerButton::Primary);
@@ -158,7 +153,6 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // The handler logic below is correct; it will activate once blitz-shell
             // is patched to call handle_ui_event for wheel events.
             onwheel: move |evt| {
-                let (w, h) = *rendered_size.read();
                 let delta = evt.delta().strip_units();
                 if evt.modifiers().ctrl() {
                     let anchor = kurbo::Vec2::new(
@@ -185,11 +179,12 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             // Canvas is purely visual — no event handlers.
             // "src" is not in Dioxus's canvas element schema but blitz-dom reads
             // it to associate a registered CustomPaintSource with this element.
+            // width/height here set the GPU texture dimensions Blitz calls render() with.
             canvas {
                 "src": "{canvas_id}",
-                width: "{doc_w}",
-                height: "{doc_h}",
-                style: "display: block; width: {doc_w}px; height: {doc_h}px;",
+                width: "{w}",
+                height: "{h}",
+                style: "display: block; width: {w}px; height: {h}px;",
             }
         }
     }
