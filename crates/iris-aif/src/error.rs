@@ -202,6 +202,10 @@ pub enum AifError {
     #[error("file access permission was revoked by the OS during the operation")]
     PermissionRevoked,
 
+    /// Failed to import a raster image (e.g. invalid format or decoding failure).
+    #[error("failed to import raster image: {0}")]
+    ImportError(String),
+
     // ── Recoverable errors ───────────────────────────────────────────────────
 
     /// An EXR tile could not be decoded; the compositor substitutes a fully

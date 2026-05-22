@@ -30,28 +30,22 @@ pub fn AppLayout(mut state: Signal<AppState>) -> Element {
         .unwrap_or_default();
 
     let active_idx = state.read().active_tab_index;
-    let platform = state.read().platform;
-    let title = state.read().document.as_ref().map(|d| d.title.clone());
-    let is_dirty = state
-        .read()
-        .document
-        .as_ref()
-        .map(|d| d.dirty)
-        .unwrap_or(false);
+    // let platform = state.read().platform;
+    // let title = state.read().document.as_ref().map(|d| d.title.clone());
+    // let is_dirty = state
+    //     .read()
+    //     .document
+    //     .as_ref()
+    //     .map(|d| d.dirty)
+    //     .unwrap_or(false);
 
     rsx! {
         div {
             style: "display: flex; flex-direction: column; width: 100%; height: 100vh; \
                     background-color: {COLOR_SURFACE_BASE}; font-family: {FONT_FAMILY_UI};",
-            AtTitleBar {
-                document_title: title,
-                is_dirty,
-                app_name: "Iris",
-                collaborator_count: 0,
-                collaborator_label: String::new(),
-                platform,
-                on_icon_press: move |_| {},
-            }
+            onmousedown: move |evt| {
+                tracing::info!("root div mousedown: {:?}", evt.element_coordinates());
+            },
             AtTabBar {
                 tabs,
                 active_index: active_idx,

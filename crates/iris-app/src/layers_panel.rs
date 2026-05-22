@@ -103,6 +103,63 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                     },
                     "−"
                 }
+                button {
+                    style: "flex: 1; padding: {SPACE_2}px; \
+                            background-color: {COLOR_SURFACE_2}; \
+                            color: {COLOR_TEXT_ON_CHROME}; border: none; \
+                            border-radius: {RADIUS_SM}px; cursor: pointer; \
+                            font-size: {FONT_SIZE_LABEL}px;",
+                    onclick: move |_| {
+                        spawn(async move {
+                            let picker = iris_aif::FilePicker::new();
+                            let options = iris_aif::PickOptions {
+                                mime_types: vec![
+                                    "image/png".to_string(),
+                                    "image/jpeg".to_string(),
+                                    "image/webp".to_string(),
+                                    "image/x-exr".to_string(),
+                                ],
+                                filter_label: Some("Raster Images".to_string()),
+                                ..Default::default()
+                            };
+                            match picker.pick_file_to_open(options).await {
+                                Ok(Some(token)) => {
+                                    let name = token.display_name().to_string();
+                                    match token.open_read() {
+                                        Ok(mut reader) => {
+                                            let mut bytes = Vec::new();
+                                            use std::io::Read;
+                                            if let Err(e) = reader.read_to_end(&mut bytes) {
+                                                tracing::error!("Failed to read imported file: {}", e);
+                                                return;
+                                            }
+                                            match iris_aif::import_raster_image(&bytes, &name) {
+                                                Ok(layer) => {
+                                                    if let Some(doc) = state.write().document.as_mut() {
+                                                        let _ = doc.tree.add_layer(None, 0, layer);
+                                                        doc.dirty = true;
+                                                    }
+                                                    state.write().canvas_dirty = true;
+                                                }
+                                                Err(e) => {
+                                                    tracing::error!("Failed to import image: {}", e);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to open file for import: {}", e);
+                                        }
+                                    }
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    tracing::error!("File picker error: {}", e);
+                                }
+                            }
+                        });
+                    },
+                    "Import"
+                }
             }
         }
     }

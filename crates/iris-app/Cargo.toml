@@ -16,6 +16,7 @@ appthere-ui        = { workspace = true }
 iris-canvas        = { workspace = true }
 iris-pixel         = { workspace = true }
 iris-tools         = { workspace = true }
+iris-aif           = { workspace = true }
 kurbo              = { workspace = true }
 dioxus             = { workspace = true }
 tracing            = { workspace = true }

@@ -66,6 +66,7 @@ serde           = { version = "1", features = ["derive"] }
 proptest        = { version = "1" }
 bytemuck        = { version = "1", features = ["derive"] }
 png             = { version = "0.17" }
+image           = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [patch.crates-io]
 # COMPAT(dioxus): fontique patch removed — blitz-dom 0.2.4 resolves fontique 0.6.0

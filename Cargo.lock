@@ -3222,6 +3222,7 @@ version = "0.1.0"
 dependencies = [
  "exr",
  "flatbuffers",
+ "image",
  "iris-ops",
  "iris-pixel",
  "iris-vector",
@@ -3240,6 +3241,7 @@ version = "0.1.0"
 dependencies = [
  "appthere-ui",
  "dioxus",
+ "iris-aif",
  "iris-canvas",
  "iris-pixel",
  "iris-tools",

@@ -32,6 +32,7 @@ pub(crate) mod tile;
 pub(crate) mod preview;
 pub mod reader;
 pub mod writer;
+mod import;
 
 // ── Primary type re-exports ───────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ pub use document::{AifArtboard, AifCanvas, AifDocument, CanvasMode};
 pub use error::AifError;
 pub use reader::AifReader;
 pub use writer::{AifWriter, WriteOptions};
+pub use import::import_raster_image;
 
 // ── OPC surface re-export ─────────────────────────────────────────────────────
 
