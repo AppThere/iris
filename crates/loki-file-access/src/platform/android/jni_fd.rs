@@ -12,17 +12,12 @@ use crate::token::PermissionStatus;
 pub(in crate::platform) fn check_persisted_permission(
     uri: &str,
 ) -> Result<PermissionStatus, PickerError> {
-    let ctx = ndk_context::android_context();
-    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
-    // runtime via `JNI_OnLoad`. It is valid for the lifetime of the process
-    // and is not freed by this call.
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(super::jni_intents::jvm_err)?;
+    let vm = super::jni_intents::checked_vm()?;
     let mut env = vm
         .attach_current_thread()
         .map_err(super::jni_intents::attach_err)?;
 
-    let resolver = super::jni_intents::get_content_resolver(&mut env, &ctx)?;
+    let resolver = super::jni_intents::get_content_resolver(&mut env)?;
 
     let list = env
         .call_method(
@@ -80,12 +75,7 @@ pub(in crate::platform) fn check_persisted_permission(
 
 /// Open a file descriptor for a content URI via `ContentResolver`.
 pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessError> {
-    let ctx = ndk_context::android_context();
-    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
-    // runtime via `JNI_OnLoad`. It is valid for the lifetime of the process
-    // and is not freed by this call.
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|_| access_err("get JavaVM"))?;
+    let vm = super::jni_intents::checked_vm().map_err(|_| access_err("get JavaVM"))?;
     let mut env = vm
         .attach_current_thread()
         .map_err(|_| access_err("attach thread"))?;
@@ -95,9 +85,8 @@ pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessE
         .new_string(mode)
         .map_err(|_| access_err("mode string"))?;
 
-    // SAFETY: `ctx.context()` is a non-null `jobject` pointing to the current
-    // Android Activity, valid for the lifetime of the activity and not freed here.
-    let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+    let activity =
+        super::jni_intents::checked_activity().map_err(|_| access_err("get activity"))?;
     let resolver = env
         .call_method(
             &activity,
@@ -123,10 +112,16 @@ pub(in crate::platform) fn open_fd(uri: &str, mode: &str) -> Result<i32, AccessE
         .l()
         .map_err(|_| AccessError::InvalidDescriptor)?;
 
-    env.call_method(&pfd, "detachFd", "()I", &[])
+    let fd = env
+        .call_method(&pfd, "detachFd", "()I", &[])
         .map_err(|_| access_err("detachFd"))?
         .i()
-        .map_err(|_| AccessError::InvalidDescriptor)
+        .map_err(|_| AccessError::InvalidDescriptor)?;
+    // A negative descriptor would make the caller's `from_raw_fd` unsound.
+    if fd < 0 {
+        return Err(AccessError::InvalidDescriptor);
+    }
+    Ok(fd)
 }
 
 /// Parse a URI string for access-error contexts.

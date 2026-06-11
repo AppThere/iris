@@ -55,7 +55,7 @@ pub fn AppLayout(mut state: Signal<AppState>) -> Element {
                 on_tab_close: move |_| {},
                 on_new_tab: move |_| {
                     let doc = OpenDocument::new_blank(800, 600, "Untitled");
-                    state.write().document = Some(doc);
+                    state.write().set_document(doc);
                     state.write().active_tab_index = 1;
                 },
                 new_tab_aria_label: "New document".to_string(),

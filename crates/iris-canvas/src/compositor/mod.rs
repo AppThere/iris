@@ -82,8 +82,8 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<wgpu::Texture, CompositorError> {
-        let logical_w = ((width_px as f64) / scale.max(1.0)).round() as u32;
-        let logical_h = ((height_px as f64) / scale.max(1.0)).round() as u32;
+        let logical_w = ((width_px as f64) / scale.max(1.0)).round().max(1.0) as u32;
+        let logical_h = ((height_px as f64) / scale.max(1.0)).round().max(1.0) as u32;
 
         let pixel_count = (width_px * height_px) as usize;
         // Premultiplied linear-light f32 RGBA accumulation buffer.

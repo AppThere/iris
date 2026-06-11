@@ -35,7 +35,7 @@ fn dispatch_pixel_tool(event: ToolEvent, mut state: Signal<AppState>) {
             }
             PixelTool::Fill => {
                 let mut s = state.write();
-                let layer_id = match s.selected_layer { Some(id) => id, None => return };
+                let layer_id = match s.validated_selected_layer() { Some(id) => id, None => return };
                 let color = s.foreground_color;
                 let tolerance = s.pixel_tool_state.fill_tolerance;
                 let doc_rect = s.document.as_ref().map(|d| {
@@ -105,7 +105,7 @@ fn dispatch_pixel_tool(event: ToolEvent, mut state: Signal<AppState>) {
 
 fn brush_down(event: ToolEvent, mut state: Signal<AppState>) {
     let mut s = state.write();
-    let layer_id = match s.selected_layer { Some(id) => id, None => return };
+    let layer_id = match s.validated_selected_layer() { Some(id) => id, None => return };
     let mut pts = std::mem::take(&mut s.pixel_tool_state);
     pts.brush.settings.selection = s.selection.rect;
     if let Some(doc) = s.document.as_mut() {
@@ -120,7 +120,7 @@ fn brush_down(event: ToolEvent, mut state: Signal<AppState>) {
 
 fn brush_move(event: ToolEvent, mut state: Signal<AppState>) {
     let mut s = state.write();
-    let layer_id = match s.selected_layer { Some(id) => id, None => return };
+    let layer_id = match s.validated_selected_layer() { Some(id) => id, None => return };
     let mut pts = std::mem::take(&mut s.pixel_tool_state);
     pts.brush.settings.selection = s.selection.rect;
     if let Some(doc) = s.document.as_mut() {
@@ -135,7 +135,7 @@ fn brush_move(event: ToolEvent, mut state: Signal<AppState>) {
 
 fn eraser_down(event: ToolEvent, mut state: Signal<AppState>) {
     let mut s = state.write();
-    let layer_id = match s.selected_layer { Some(id) => id, None => return };
+    let layer_id = match s.validated_selected_layer() { Some(id) => id, None => return };
     let mut pts = std::mem::take(&mut s.pixel_tool_state);
     pts.eraser.settings_mut().selection = s.selection.rect;
     if let Some(doc) = s.document.as_mut() {
@@ -150,7 +150,7 @@ fn eraser_down(event: ToolEvent, mut state: Signal<AppState>) {
 
 fn eraser_move(event: ToolEvent, mut state: Signal<AppState>) {
     let mut s = state.write();
-    let layer_id = match s.selected_layer { Some(id) => id, None => return };
+    let layer_id = match s.validated_selected_layer() { Some(id) => id, None => return };
     let mut pts = std::mem::take(&mut s.pixel_tool_state);
     pts.eraser.settings_mut().selection = s.selection.rect;
     if let Some(doc) = s.document.as_mut() {

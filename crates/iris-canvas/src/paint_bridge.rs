@@ -76,8 +76,8 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         // Event coordinates (element_coordinates()) are in LOGICAL CSS pixels (Winit
         // logical cursor position minus Taffy absolute_position, both in CSS px).
         // Divide by scale to get the logical canvas size that screen_to_doc() expects.
-        let logical_w = ((width as f64) / scale.max(1.0)).round() as u32;
-        let logical_h = ((height as f64) / scale.max(1.0)).round() as u32;
+        let logical_w = ((width as f64) / scale.max(1.0)).round().max(1.0) as u32;
+        let logical_h = ((height as f64) / scale.max(1.0)).round().max(1.0) as u32;
         // Write logical size first — must succeed even if compositing fails later.
         if let Ok(mut sz) = self.rendered_size.try_lock() {
             *sz = (logical_w, logical_h);
