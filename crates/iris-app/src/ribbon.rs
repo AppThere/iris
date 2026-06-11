@@ -1,6 +1,7 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
+use appthere_ui::icons::lucide;
 use appthere_ui::{AtRibbon, AtRibbonGroup, AtRibbonIconButton, RibbonTabDesc, RibbonTabIndex};
 use dioxus::prelude::*;
 
@@ -27,6 +28,7 @@ pub fn IrisRibbon(state: Signal<AppState>) -> Element {
                         aria_label: "Tools group".to_string(),
                         AtRibbonIconButton {
                             icon_label: "B".to_string(),
+                            icon: Some(lucide::BRUSH),
                             aria_label: "Brush".to_string(),
                             is_active: false,
                             is_disabled: true,
@@ -35,6 +37,7 @@ pub fn IrisRibbon(state: Signal<AppState>) -> Element {
                         }
                         AtRibbonIconButton {
                             icon_label: "E".to_string(),
+                            icon: Some(lucide::ERASER),
                             aria_label: "Eraser".to_string(),
                             is_active: false,
                             is_disabled: true,
@@ -46,6 +49,7 @@ pub fn IrisRibbon(state: Signal<AppState>) -> Element {
                         aria_label: "Selection group".to_string(),
                         AtRibbonIconButton {
                             icon_label: "M".to_string(),
+                            icon: Some(lucide::SQUARE_DASHED),
                             aria_label: "Rectangular marquee".to_string(),
                             is_active: false,
                             is_disabled: true,
@@ -59,6 +63,7 @@ pub fn IrisRibbon(state: Signal<AppState>) -> Element {
                         aria_label: "Colour adjustment group".to_string(),
                         AtRibbonIconButton {
                             icon_label: "Lv".to_string(),
+                            icon: Some(lucide::SLIDERS_HORIZONTAL),
                             aria_label: "Levels".to_string(),
                             is_active: false,
                             is_disabled: true,
@@ -73,6 +78,7 @@ pub fn IrisRibbon(state: Signal<AppState>) -> Element {
                         aria_label: "Export group".to_string(),
                         AtRibbonIconButton {
                             icon_label: "Ex".to_string(),
+                            icon: Some(lucide::FILE_OUTPUT),
                             aria_label: "Export".to_string(),
                             is_active: false,
                             is_disabled: true,

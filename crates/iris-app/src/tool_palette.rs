@@ -5,8 +5,10 @@ use appthere_ui::tokens::colors::{
     COLOR_ACCENT_PRIMARY, COLOR_BORDER_CHROME, COLOR_SURFACE_1, COLOR_TEXT_ON_CHROME,
     COLOR_TEXT_ON_CHROME_SECONDARY,
 };
+use appthere_ui::icons::lucide;
 use appthere_ui::tokens::spacing::{RADIUS_SM, SPACE_2};
 use appthere_ui::tokens::typography::{FONT_SIZE_LABEL, FONT_WEIGHT_SEMIBOLD};
+use appthere_ui::AtIcon;
 use dioxus::prelude::*;
 
 use crate::state::{AppState, PixelTool, ToolMode};
@@ -28,7 +30,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
         format!(
             "width: 100%; padding: {p}px 0; background-color: {bg}; \
              color: {fg}; border: none; border-radius: {r}px; cursor: pointer; \
-             font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px;",
+             font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px; \
+             display: flex; align-items: center; justify-content: center;",
             p = SPACE_2, bg = bg, fg = COLOR_TEXT_ON_CHROME,
             r = RADIUS_SM, size = FONT_SIZE_LABEL, weight = FONT_WEIGHT_SEMIBOLD,
         )
@@ -36,7 +39,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
     let disabled = format!(
         "width: 100%; padding: {p}px 0; background-color: {bg}; \
          color: {fg}; border: none; border-radius: {r}px; cursor: not-allowed; \
-         font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px; opacity: 0.5;",
+         font-size: {size}px; font-weight: {weight}; margin-bottom: {p}px; opacity: 0.5; \
+         display: flex; align-items: center; justify-content: center;",
         p = SPACE_2, bg = COLOR_SURFACE_1, fg = COLOR_TEXT_ON_CHROME_SECONDARY,
         r = RADIUS_SM, size = FONT_SIZE_LABEL, weight = FONT_WEIGHT_SEMIBOLD,
     );
@@ -63,12 +67,14 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
             button {
                 style: btn(tool_mode == ToolMode::Pixel),
                 onclick: move |_| state.write().tool_mode = ToolMode::Pixel,
-                "Px"
+                title: "Pixel mode",
+                AtIcon { icon: lucide::GRID_2X2, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
             button {
                 style: btn(tool_mode == ToolMode::Vector),
                 onclick: move |_| state.write().tool_mode = ToolMode::Vector,
-                "Vc"
+                title: "Vector mode",
+                AtIcon { icon: lucide::PEN_TOOL, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
 
             // Pixel sub-tool selectors
@@ -78,7 +84,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
                     state.write().tool_mode = ToolMode::Pixel;
                     state.write().active_pixel_tool = PixelTool::Brush;
                 },
-                "B"
+                title: "Brush",
+                AtIcon { icon: lucide::BRUSH, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
             button {
                 style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Eraser),
@@ -86,7 +93,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
                     state.write().tool_mode = ToolMode::Pixel;
                     state.write().active_pixel_tool = PixelTool::Eraser;
                 },
-                "E"
+                title: "Eraser",
+                AtIcon { icon: lucide::ERASER, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
             button {
                 style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Eyedropper),
@@ -94,7 +102,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
                     state.write().tool_mode = ToolMode::Pixel;
                     state.write().active_pixel_tool = PixelTool::Eyedropper;
                 },
-                "I"
+                title: "Eyedropper",
+                AtIcon { icon: lucide::PIPETTE, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
             button {
                 style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Fill),
@@ -102,7 +111,8 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
                     state.write().tool_mode = ToolMode::Pixel;
                     state.write().active_pixel_tool = PixelTool::Fill;
                 },
-                "F"
+                title: "Fill",
+                AtIcon { icon: lucide::PAINT_BUCKET, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
             button {
                 style: btn(tool_mode == ToolMode::Pixel && pixel_tool == PixelTool::Marquee),
@@ -110,9 +120,15 @@ pub fn ToolPalette(mut state: Signal<AppState>) -> Element {
                     state.write().tool_mode = ToolMode::Pixel;
                     state.write().active_pixel_tool = PixelTool::Marquee;
                 },
-                "M"
+                title: "Rectangular marquee",
+                AtIcon { icon: lucide::SQUARE_DASHED, color: COLOR_TEXT_ON_CHROME.to_string() }
             }
-            button { style: disabled.clone(), disabled: true, "T" }
+            button {
+                style: disabled.clone(),
+                disabled: true,
+                title: "Text (Phase 4)",
+                AtIcon { icon: lucide::TYPE, color: COLOR_TEXT_ON_CHROME_SECONDARY.to_string() }
+            }
 
             // Colour swatches: foreground over background.
             // Click either swatch to swap foreground ↔ background.

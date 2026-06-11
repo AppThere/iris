@@ -229,7 +229,12 @@ pub fn AtHomeTab(props: AtHomeTabProps) -> Element {
                         pick_error.set(None);
                         props.on_open_file.call(());
                     },
-                    "{props.open_file_label}"
+                    crate::icons::AtIcon {
+                        icon: crate::icons::lucide::FOLDER_OPEN,
+                        size: 16.0,
+                        color: COLOR_TEXT_ON_CHROME.to_string(),
+                    }
+                    "  {props.open_file_label}"
                 }
             }
         }

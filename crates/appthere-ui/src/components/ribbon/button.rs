@@ -33,8 +33,12 @@ use crate::tokens;
 #[component]
 pub fn AtRibbonIconButton(
     /// Short visible label (e.g. "B" for Bold, "I" for Italic).
-    /// Will be replaced by an SVG icon in a future pass.
+    /// Shown only when `icon` is `None`.
     icon_label: String,
+    /// Optional vendored Lucide icon markup (see [`crate::icons::lucide`]).
+    /// When set, an SVG icon is rendered instead of the text label.
+    #[props(default = None)]
+    icon: Option<&'static str>,
     /// Full accessible name for screen readers and tooltips.
     aria_label: String,
     /// Whether this button is in the active/toggled state
@@ -90,7 +94,11 @@ pub fn AtRibbonIconButton(
                     on_click.call(());
                 }
             },
-            "{icon_label}"
+            if let Some(icon) = icon {
+                crate::icons::AtIcon { icon, size: 20.0, color: text_color.to_string() }
+            } else {
+                "{icon_label}"
+            }
         }
     }
 }

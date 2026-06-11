@@ -108,17 +108,12 @@ pub fn AtTitleBar(props: AtTitleBarProps) -> Element {
                 onmouseleave: move |_| { icon_hovered.set(false); },
                 onclick: move |_| { props.on_icon_press.call(()); },
 
-                // App icon placeholder — colored square.
-                // TODO(icons): Replace with an SVG app icon asset once the icon
-                // system is implemented.
-                div {
-                    style: format!(
-                        "width: {sz}px; height: {sz}px; border-radius: {r}px; \
-                         background: {bg};",
-                        sz = ICON_SIZE_LG,
-                        r  = RADIUS_SM,
-                        bg = "#3D7EFF",
-                    ),
+                // App icon (Lucide aperture) — placeholder until a branded
+                // SVG asset lands.
+                crate::icons::AtIcon {
+                    icon: crate::icons::lucide::APERTURE,
+                    size: ICON_SIZE_LG as f32,
+                    color: "#3D7EFF".to_string(),
                 }
             }
 
