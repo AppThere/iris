@@ -2,18 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Pixel compositor: composites all visible [`LayerTree`] layers into a single
-//! `Rgba16Float` wgpu texture representing the current viewport.
+//! wgpu texture representing the current viewport.
 //!
 //! Phase 2: Normal blend mode only. All other blend modes log a warning and
-//! the layer is skipped. See TODO below for Phase 4.
+//! the layer is skipped (Phase 4 work — see SPEC.md §4.8).
+//!
+//! Sub-modules:
+//! - [`pass`] / [`upload`] / [`composite`] — GPU path ([`Compositor::composite`])
+//! - [`cpu`] / [`cpu_upload`] — CPU path ([`Compositor::composite_to_texture`]),
+//!   safe to call from `CustomPaintSource::render()`
 
 pub(crate) mod pass;
 pub(crate) mod upload;
 mod composite;
+mod cpu;
+#[cfg(test)]
+mod cpu_tests;
+mod cpu_upload;
 
 use std::sync::{Arc, Mutex};
 
-use iris_pixel::{LayerContent, LayerTree, TileCoord, TileData, TILE_SIZE};
+use iris_pixel::LayerTree;
 
 use crate::viewport::CanvasViewport;
 
@@ -63,11 +72,9 @@ impl Compositor {
     /// CPU composite path — safe to call from `CustomPaintSource::render()`.
     ///
     /// Uses `queue.write_texture()` rather than a `CommandEncoder`, so it cannot
-    /// corrupt Vello's in-progress encoder. Returns an `Rgba8Unorm` texture
-    /// populated without creating or submitting a `CommandEncoder`.
-    ///
-    /// Phase 2: composites visible pixel tiles in CPU RAM using Porter-Duff over,
-    /// then converts linear f32 → sRGB u8 for upload.
+    /// corrupt Vello's in-progress encoder. Inverse-maps destination pixels to
+    /// document space, so coverage is complete at any DPI scale, zoom, or
+    /// rotation — see [`cpu`] module docs.
     /// TODO(iris): Phase 4 — replace with GPU compute path via render_to_texture().
     pub fn composite_to_texture(
         &self,
@@ -82,219 +89,10 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<wgpu::Texture, CompositorError> {
-        let logical_w = ((width_px as f64) / scale.max(1.0)).round().max(1.0) as u32;
-        let logical_h = ((height_px as f64) / scale.max(1.0)).round().max(1.0) as u32;
-
-        let pixel_count = (width_px * height_px) as usize;
-        // Premultiplied linear-light f32 RGBA accumulation buffer.
-        let mut acc = vec![0.0_f32; pixel_count * 4];
-
-        let doc_w = tree.canvas_width;
-        let doc_h = tree.canvas_height;
-        fill_document_background(
-            &mut acc, viewport,
-            width_px, height_px, logical_w, logical_h,
-            doc_w, doc_h,
-        );
-
-        let visible_rect = viewport.visible_doc_rect(logical_w, logical_h);
-        let layers: Vec<_> = tree.iter_depth_first().collect();
-
-        for layer in layers.iter().rev() {
-            if !layer.visible {
-                continue;
-            }
-            let LayerContent::Pixel(ref px) = layer.content else {
-                continue;
-            };
-            let offset_x = px.canvas_offset_x as f64;
-            let offset_y = px.canvas_offset_y as f64;
-            let ts = TILE_SIZE as f64;
-            let tx_min = ((visible_rect.x0 - offset_x) / ts).floor().max(0.0) as u32;
-            let ty_min = ((visible_rect.y0 - offset_y) / ts).floor().max(0.0) as u32;
-            let tx_max = ((visible_rect.x1 - offset_x) / ts).ceil().max(0.0) as u32;
-            let ty_max = ((visible_rect.y1 - offset_y) / ts).ceil().max(0.0) as u32;
-            for ty in ty_min..=ty_max {
-                for tx in tx_min..=tx_max {
-                    let coord = TileCoord { tx, ty };
-                    if let Some(tile_data) = px.tiles.get(coord) {
-                        blit_tile(
-                            &mut acc, tile_data, tx, ty,
-                            offset_x, offset_y,
-                            viewport,
-                            width_px, height_px, logical_w, logical_h,
-                            layer.opacity,
-                        );
-                    }
-                    // Absent tile = transparent = no contribution to composite.
-                }
-            }
-        }
-
-        // Convert premultiplied linear → straight-alpha sRGB u8 for upload.
-        let mut u8_data = Vec::with_capacity(pixel_count * 4);
-        for i in 0..pixel_count {
-            let base = i * 4;
-            let a = acc[base + 3].clamp(0.0, 1.0);
-            let (r, g, b) = if a > f32::EPSILON {
-                (acc[base] / a, acc[base + 1] / a, acc[base + 2] / a)
-            } else {
-                (0.0, 0.0, 0.0)
-            };
-            u8_data.push(to_srgb_u8(r));
-            u8_data.push(to_srgb_u8(g));
-            u8_data.push(to_srgb_u8(b));
-            u8_data.push((a * 255.0 + 0.5) as u8);
-        }
-
-        // COMPAT(blitz): Rgba8Unorm + COPY_SRC + COPY_DST is required by
-        // vello::Renderer::register_texture(), which copies the texture into
-        // Vello's image atlas via a wgpu copy operation (needs COPY_SRC).
-        // COPY_DST is required by queue.write_texture() for the initial upload.
-        // TEXTURE_BINDING and STORAGE_BINDING are required by anyrender_vello's blit pass
-        // which samples the texture in a shader (vello::Renderer::register_texture path).
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("iris-canvas-composite"),
-            size: wgpu::Extent3d {
-                width: width_px, height: height_px, depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &u8_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width_px * 4),
-                rows_per_image: Some(height_px),
-            },
-            wgpu::Extent3d { width: width_px, height: height_px, depth_or_array_layers: 1 },
-        );
-        Ok(texture)
+        cpu_upload::run(tree, viewport, width_px, height_px, scale, device, queue)
     }
 }
 
 impl Default for Compositor {
     fn default() -> Self { Self::new() }
-}
-
-// ── CPU composite helpers ─────────────────────────────────────────────────────
-
-/// Forward-map a tile's pixels onto the accumulation buffer using Porter-Duff over.
-///
-/// Straight-alpha f16 source pixels are premultiplied before compositing.
-/// Phase 2 note: only called when a tile has data; blank documents have no
-/// tile data so this path is not exercised until pixels are painted.
-fn blit_tile(
-    acc: &mut [f32],
-    tile_data: &TileData,
-    tx: u32, ty: u32,
-    offset_x: f64, offset_y: f64,
-    viewport: &CanvasViewport,
-    physical_w: u32, physical_h: u32,
-    logical_w: u32, logical_h: u32,
-    opacity: f32,
-) {
-    let scale_x = physical_w as f64 / logical_w as f64;
-    let scale_y = physical_h as f64 / logical_h as f64;
-    let ts = TILE_SIZE as usize;
-    let bytes = &tile_data.0;
-    for py in 0..ts {
-        for px_local in 0..ts {
-            let doc = kurbo::Vec2::new(
-                offset_x + (tx as f64 * ts as f64) + px_local as f64 + 0.5,
-                offset_y + (ty as f64 * ts as f64) + py as f64 + 0.5,
-            );
-            let screen = viewport.doc_to_screen(doc, logical_w, logical_h);
-            let sx = (screen.x * scale_x) as i64;
-            let sy = (screen.y * scale_y) as i64;
-            if sx < 0 || sy < 0 || sx >= physical_w as i64 || sy >= physical_h as i64 {
-                continue;
-            }
-            let ib = (py * ts + px_local) * 8; // 4 channels × 2 bytes per f16
-            let sr = f16_to_f32(u16::from_le_bytes([bytes[ib],     bytes[ib + 1]]));
-            let sg = f16_to_f32(u16::from_le_bytes([bytes[ib + 2], bytes[ib + 3]]));
-            let sb = f16_to_f32(u16::from_le_bytes([bytes[ib + 4], bytes[ib + 5]]));
-            let sa = f16_to_f32(u16::from_le_bytes([bytes[ib + 6], bytes[ib + 7]])) * opacity;
-            let ob = (sy as usize * physical_w as usize + sx as usize) * 4;
-            let inv = 1.0 - sa;
-            // Porter-Duff "over": dst = src_premul + dst × (1 − src_alpha)
-            acc[ob    ] = sr * sa + acc[ob    ] * inv;
-            acc[ob + 1] = sg * sa + acc[ob + 1] * inv;
-            acc[ob + 2] = sb * sa + acc[ob + 2] * inv;
-            acc[ob + 3] =    sa   + acc[ob + 3] * inv;
-        }
-    }
-}
-
-/// Fill the screen-space region corresponding to the document boundary with opaque white.
-///
-/// Called before layer compositing so painted tiles composite on top of the white
-/// background. Pixels outside the document boundary remain transparent (dark).
-fn fill_document_background(
-    acc: &mut [f32],
-    viewport: &CanvasViewport,
-    physical_w: u32, physical_h: u32,
-    logical_w: u32, logical_h: u32,
-    doc_w: u32,
-    doc_h: u32,
-) {
-    let scale_x = physical_w as f64 / logical_w as f64;
-    let scale_y = physical_h as f64 / logical_h as f64;
-    // Use logical dims for transform; scale to physical pixel coords.
-    let top_left = viewport.doc_to_screen(kurbo::Vec2::new(0.0, 0.0), logical_w, logical_h);
-    let bottom_right = viewport.doc_to_screen(
-        kurbo::Vec2::new(doc_w as f64, doc_h as f64),
-        logical_w, logical_h,
-    );
-    let x0 = ((top_left.x * scale_x).floor() as i64).max(0) as usize;
-    let y0 = ((top_left.y * scale_y).floor() as i64).max(0) as usize;
-    let x1 = ((bottom_right.x * scale_x).ceil() as i64).min(physical_w as i64) as usize;
-    let y1 = ((bottom_right.y * scale_y).ceil() as i64).min(physical_h as i64) as usize;
-    for sy in y0..y1 {
-        for sx in x0..x1 {
-            let ob = (sy * physical_w as usize + sx) * 4;
-            // Premultiplied opaque white: (1, 1, 1, 1).
-            acc[ob    ] = 1.0;
-            acc[ob + 1] = 1.0;
-            acc[ob + 2] = 1.0;
-            acc[ob + 3] = 1.0;
-        }
-    }
-}
-
-/// Convert IEEE 754 half-precision bits to f32.
-/// Subnormal f16 values (exp=0, mant≠0) are treated as zero — adequate for pixels.
-fn f16_to_f32(bits: u16) -> f32 {
-    let sign = ((bits as u32) & 0x8000) << 16;
-    let exp  = ((bits as u32) & 0x7C00) >> 10;
-    let mant = (bits as u32) & 0x03FF;
-    f32::from_bits(match exp {
-        0  => sign,                                     // ±zero or subnormal → zero
-        31 => sign | 0x7F80_0000 | (mant << 13),       // ±inf / NaN pass-through
-        e  => sign | ((e + 112) << 23) | (mant << 13), // normal: rebias 15→127
-    })
-}
-
-/// Encode a linear-light [0,1] value to sRGB gamma and clamp to u8.
-fn to_srgb_u8(linear: f32) -> u8 {
-    let s = if linear <= 0.003_130_8 {
-        12.92 * linear
-    } else {
-        1.055 * linear.clamp(0.0, 1.0).powf(1.0 / 2.4) - 0.055
-    };
-    (s.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }

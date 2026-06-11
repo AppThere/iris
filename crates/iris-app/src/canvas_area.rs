@@ -51,6 +51,10 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
 
     // Sync tree_signal → IrisCanvas when a stroke has painted new tile data.
     // canvas_dirty is set by tool_dispatch after each Down/Move/Up event.
+    // TODO(iris): SPEC.md §13 Phase 4 — this deep-clones every painted tile
+    // (512 KB each) twice per pointer event (here and in canvas_widget's
+    // shared_tree sync). Replace with Arc-shared tiles (copy-on-write) or
+    // dirty-rect updates when the GPU compositor path lands.
     use_effect(move || {
         if state.read().canvas_dirty {
             let new_tree = state
