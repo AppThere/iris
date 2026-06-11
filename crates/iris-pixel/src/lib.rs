@@ -18,11 +18,13 @@ mod color_space;
 mod layer;
 mod pixel_layer;
 mod tile;
+mod tile_data;
 mod tree;
 
 pub use blend::BlendMode;
 pub use color_space::{ColorSpaceId, CMYK_GENERIC, DISPLAY_P3, LINEAR_SRGB, PROPHOTO_RGB, SRGB};
 pub use layer::{Layer, LayerContent, LayerId, LayerMask, LayerProp, PropValue};
 pub use pixel_layer::{BitDepth, ChannelLayout, CropBounds, ExrCompression, PixelLayer};
-pub use tile::{TileCache, TileCoord, TileData, TILE_SIZE};
+pub use tile::{TileCache, TileCoord, TILE_SIZE};
+pub use tile_data::TileData;
 pub use tree::{LayerTree, LayerTreeError};

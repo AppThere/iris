@@ -15,6 +15,7 @@
 //!   - `CustomPaintSource::render()` returning `None` skips the frame;
 //!     Blitz reuses the last registered texture until a `Some` is returned.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyrender_vello::{CustomPaintCtx, CustomPaintSource, DeviceHandle, TextureHandle};
@@ -39,6 +40,11 @@ pub(crate) struct IrisCanvasPaintSource {
     tree: Arc<Mutex<LayerTree>>,
     /// Written each frame by `render()` with the Blitz-reported canvas size.
     rendered_size: Arc<Mutex<(u32, u32)>>,
+    /// Bumped by the component whenever tree/viewport state changes; lets
+    /// `render()` skip recompositing entirely on unchanged frames.
+    generation: Arc<AtomicU64>,
+    /// `(generation, width, height, scale bits)` of the last composited frame.
+    last_frame: Option<(u64, u32, u32, u64)>,
     device_handle: Option<DeviceHandle>,
     last_handle: Option<TextureHandle>,
 }
@@ -49,19 +55,38 @@ impl IrisCanvasPaintSource {
         viewport: Arc<Mutex<CanvasViewport>>,
         tree: Arc<Mutex<LayerTree>>,
         rendered_size: Arc<Mutex<(u32, u32)>>,
+        generation: Arc<AtomicU64>,
     ) -> Self {
-        Self { compositor, viewport, tree, rendered_size, device_handle: None, last_handle: None }
+        Self {
+            compositor,
+            viewport,
+            tree,
+            rendered_size,
+            generation,
+            last_frame: None,
+            device_handle: None,
+            last_handle: None,
+        }
     }
 }
 
 impl CustomPaintSource for IrisCanvasPaintSource {
     fn resume(&mut self, device_handle: &DeviceHandle) {
         self.device_handle = Some(device_handle.clone());
+        // A new device invalidates cached pipelines and tile textures.
+        if let Ok(c) = self.compositor.lock() {
+            c.reset_device_state();
+        }
+        self.last_frame = None;
     }
 
     fn suspend(&mut self) {
         self.device_handle = None;
         self.last_handle = None;
+        if let Ok(c) = self.compositor.lock() {
+            c.reset_device_state();
+        }
+        self.last_frame = None;
     }
 
     fn render(
@@ -93,6 +118,18 @@ impl CustomPaintSource for IrisCanvasPaintSource {
 
         let dh = self.device_handle.as_ref()?;
 
+        // Skip recompositing when nothing changed since the last frame: Blitz
+        // calls render() every paint, but the canvas only changes when the
+        // component bumps `generation` (stroke, pan/zoom, resize). Returning
+        // the existing handle reuses the registered texture for free.
+        let generation = self.generation.load(Ordering::Acquire);
+        let frame_key = (generation, width, height, scale.to_bits());
+        if self.last_frame == Some(frame_key) {
+            if let Some(handle) = &self.last_handle {
+                return Some(handle.clone());
+            }
+        }
+
         if let Some(old) = self.last_handle.take() {
             ctx.unregister_texture(old);
         }
@@ -103,13 +140,12 @@ impl CustomPaintSource for IrisCanvasPaintSource {
         let tree_guard = self.tree.lock().ok()?;
         let compositor_guard = self.compositor.lock().ok()?;
 
-        // CPU composite path: uses queue.write_texture() rather than a CommandEncoder
-        // submission. Submitting a CommandEncoder here corrupts Vello's in-progress encoder,
-        // causing the "Encoder is invalid" crash.
-        // TODO(iris): Phase 4 — replace with GPU compute path that follows Loki's
-        // render_to_texture() pattern so work is submitted through Vello's encoder.
+        // Phase 4 GPU frame path. render() runs during Vello scene building —
+        // before Vello encodes its own pass — so our queue.submit() lands
+        // ahead of the pass that samples the registered texture. Falls back
+        // to the CPU path on GPU error or when IRIS_CPU_COMPOSITE=1.
         let texture = compositor_guard
-            .composite_to_texture(&tree_guard, &viewport, width, height, scale, &dh.device, &dh.queue)
+            .composite_frame(&tree_guard, &viewport, width, height, scale, &dh.device, &dh.queue)
             .ok()?;
 
         drop(compositor_guard);
@@ -117,6 +153,7 @@ impl CustomPaintSource for IrisCanvasPaintSource {
 
         let handle = ctx.register_texture(texture);
         self.last_handle = Some(handle.clone());
+        self.last_frame = Some(frame_key);
         Some(handle)
     }
 }

@@ -27,7 +27,8 @@ jobs:
           libxi-dev \
           libxrandr-dev \
           libxcursor-dev \
-          libgl1-mesa-dev
+          libgl1-mesa-dev \
+          mesa-vulkan-drivers
     - name: Build
       run: cargo build --verbose
     - name: Run tests
