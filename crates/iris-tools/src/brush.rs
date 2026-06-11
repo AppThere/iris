@@ -121,7 +121,7 @@ mod tests {
 
     fn alpha_at(tile: &TileData, px: usize, py: usize) -> f32 {
         let bi = (py * TILE_SIZE as usize + px) * 8;
-        paint::f16_to_f32(u16::from_le_bytes([tile.0[bi+6], tile.0[bi+7]]))
+        paint::f16_to_f32(u16::from_le_bytes([tile.bytes()[bi+6], tile.bytes()[bi+7]]))
     }
 
     fn down_at(x: f64, y: f64) -> ToolEvent {
@@ -143,6 +143,31 @@ mod tests {
         let tile = pl.tiles.get(TileCoord { tx: 0, ty: 0 }).expect("tile created");
         assert!(alpha_at(tile, 128, 128) > 0.9, "center pixel painted");
         assert_eq!(alpha_at(tile, 0, 0), 0.0, "outside pixel untouched");
+    }
+
+    /// Painting goes through TileCache::get_mut + TileData::bytes_mut, which
+    /// is copy-on-write: a layer clone taken between strokes (the render
+    /// snapshot pattern) must never see later paint operations.
+    #[test]
+    fn render_snapshot_unaffected_by_later_painting() {
+        let (mut layer, id) = make_layer();
+        let mut engine = BrushEngine::new(BrushSettings {
+            size_px: 10.0, opacity: 1.0, hardness: 1.0, pressure_size: false,
+            ..BrushSettings::default()
+        });
+        engine.on_down(&down_at(128.0, 128.0), &mut layer, id);
+        let snapshot = layer.clone(); // cheap: tiles are Arc-shared
+
+        engine.on_down(&down_at(20.0, 20.0), &mut layer, id);
+
+        let LayerContent::Pixel(ref pl) = snapshot.content else { panic!() };
+        let tile = pl.tiles.get(TileCoord { tx: 0, ty: 0 }).expect("tile in snapshot");
+        assert!(alpha_at(tile, 128, 128) > 0.9, "snapshot keeps first stroke");
+        assert_eq!(alpha_at(tile, 20, 20), 0.0, "snapshot must not see later stroke");
+
+        let LayerContent::Pixel(ref pl) = layer.content else { panic!() };
+        let tile = pl.tiles.get(TileCoord { tx: 0, ty: 0 }).expect("live tile");
+        assert!(alpha_at(tile, 20, 20) > 0.9, "live layer has later stroke");
     }
 
     #[test]

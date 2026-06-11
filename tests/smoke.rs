@@ -35,7 +35,7 @@ fn opaque_white_tile() -> TileData {
     for chunk in bytes.chunks_exact_mut(8) {
         chunk.copy_from_slice(&pixel);
     }
-    TileData(bytes.into_boxed_slice())
+    TileData::from_vec(bytes)
 }
 
 fn new_pixel_layer(id: Uuid) -> Layer {
@@ -90,7 +90,7 @@ fn integration_smoke() {
         layer_id: layer1_id,
         tile: coord,
         before: TileSnapshot::compress(&blank),
-        after: TileSnapshot::compress(&tile_data.0),
+        after: TileSnapshot::compress(tile_data.bytes()),
     });
     undo_stack.push(op);
 
@@ -141,8 +141,8 @@ fn integration_smoke() {
     };
     let loaded_tile = px1.tiles.get(coord).expect("tile (0,0) of layer1 must be present");
     assert_eq!(
-        &*loaded_tile.0,
-        &*tile_data.0,
+        loaded_tile.bytes(),
+        tile_data.bytes(),
         "tile bytes must round-trip exactly"
     );
 

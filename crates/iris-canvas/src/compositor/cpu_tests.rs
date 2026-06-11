@@ -27,7 +27,7 @@ fn red_tile_tree() -> LayerTree {
         px[7] = F16_ONE[1];
     }
     let mut tiles = TileCache::new(4);
-    tiles.insert(TileCoord { tx: 0, ty: 0 }, TileData(bytes.into_boxed_slice()));
+    tiles.insert(TileCoord { tx: 0, ty: 0 }, TileData::from_vec(bytes));
 
     let layer = Layer {
         id: uuid::Uuid::nil(),

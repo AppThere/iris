@@ -63,6 +63,7 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
     for ty in 0..rows {
         for tx in 0..cols {
             let mut tile_data = TileData::transparent(tile_size);
+            let tile_bytes = tile_data.bytes_mut();
 
             for local_y in 0..tile_size {
                 let global_y = ty * tile_size + local_y;
@@ -78,7 +79,7 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
                     let img_idx = (global_y as usize * width as usize + global_x as usize) * 8;
                     let tile_idx = (local_y as usize * tile_size as usize + local_x as usize) * 8;
 
-                    tile_data.0[tile_idx..tile_idx + 8].copy_from_slice(&pixels[img_idx..img_idx + 8]);
+                    tile_bytes[tile_idx..tile_idx + 8].copy_from_slice(&pixels[img_idx..img_idx + 8]);
                 }
             }
 

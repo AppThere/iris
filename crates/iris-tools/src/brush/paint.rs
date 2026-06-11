@@ -77,20 +77,40 @@ fn paint_tile(
     layer_id: LayerId,
     dirty_tiles: &mut HashSet<(LayerId, TileCoord)>,
 ) {
-    let mut tile = pl.tiles.get(coord).cloned()
-        .unwrap_or_else(|| TileData::transparent(TILE_SIZE));
     let tile_ox = pl.canvas_offset_x as f64 + coord.tx as f64 * TILE_SIZE as f64;
     let tile_oy = pl.canvas_offset_y as f64 + coord.ty as f64 * TILE_SIZE as f64;
+    let ts = TILE_SIZE as usize;
+
+    // Dab bounding box in tile-local pixel indices (pixel centres sit at
+    // tile_o + i + 0.5). Without this the loop visited all 65 536 tile pixels
+    // per dab regardless of brush size.
+    let x0f = (center.x - radius - tile_ox - 0.5).ceil();
+    let y0f = (center.y - radius - tile_oy - 0.5).ceil();
+    let x1f = (center.x + radius - tile_ox - 0.5).floor();
+    let y1f = (center.y + radius - tile_oy - 0.5).floor();
+    if x1f < 0.0 || y1f < 0.0 || x0f >= ts as f64 || y0f >= ts as f64 || x1f < x0f || y1f < y0f {
+        return; // dab does not touch this tile — do not allocate it
+    }
+    let x0 = x0f.max(0.0) as usize;
+    let y0 = y0f.max(0.0) as usize;
+    let x1 = (x1f as usize).min(ts - 1);
+    let y1 = (y1f as usize).min(ts - 1);
+
+    if pl.tiles.get(coord).is_none() {
+        pl.tiles.insert(coord, TileData::transparent(TILE_SIZE));
+    }
+    let Some(tile) = pl.tiles.get_mut(coord) else { return; };
     let color = settings.color;
     let opacity = settings.opacity;
     let hardness = settings.hardness;
     let erase = settings.erase_mode;
     let selection = settings.selection;
-    let ts = TILE_SIZE as usize;
     {
-        let bytes = &mut tile.0;
-        for py in 0..ts {
-            for px in 0..ts {
+        // Copy-on-write: deep-copies the tile only when a render snapshot
+        // still shares it; hoisted out of the pixel loop.
+        let bytes = tile.bytes_mut();
+        for py in y0..=y1 {
+            for px in x0..=x1 {
                 let wx = tile_ox + px as f64 + 0.5;
                 let wy = tile_oy + py as f64 + 0.5;
                 if let Some(sel) = selection {
@@ -126,7 +146,6 @@ fn paint_tile(
             }
         }
     }
-    pl.tiles.insert(coord, tile);
     dirty_tiles.insert((layer_id, coord));
 }
 

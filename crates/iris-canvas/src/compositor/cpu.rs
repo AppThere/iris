@@ -187,7 +187,7 @@ fn blit_tile(
         logical_w, logical_h, scale_x, scale_y, physical_w, physical_h,
     );
 
-    let bytes = &tile_data.0;
+    let bytes = tile_data.bytes();
     for sy in py0..py1 {
         let mut doc = map.doc_at(px0 as f64, sy as f64);
         for sx in px0..px1 {

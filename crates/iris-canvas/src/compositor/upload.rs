@@ -34,7 +34,7 @@ pub(super) fn upload_tile(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        &tile_data.0,
+        tile_data.bytes(),
         wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(bytes_per_row),

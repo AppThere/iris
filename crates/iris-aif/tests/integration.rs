@@ -193,7 +193,7 @@ fn doc_with_painted_layer(layer_id: Uuid) -> AifDocument {
         chunk.copy_from_slice(&pixel);
     }
     let mut cache = TileCache::new(4);
-    cache.insert(TileCoord { tx: 0, ty: 0 }, TileData(raw.into_boxed_slice()));
+    cache.insert(TileCoord { tx: 0, ty: 0 }, TileData::from_vec(raw));
 
     let layer = Layer {
         id: layer_id,

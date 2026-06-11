@@ -37,7 +37,7 @@ pub(crate) fn write_tile_exr(
     tx: u32,
     ty: u32,
 ) -> Result<Vec<u8>, AifError> {
-    let bytes: &[u8] = &data.0;
+    let bytes: &[u8] = data.bytes();
 
     let get_pixel = |exr::prelude::Vec2(x, y): exr::prelude::Vec2<usize>| {
         let base = (y * TILE_W + x) * BPP;
@@ -149,7 +149,7 @@ pub(crate) fn read_tile_exr(
         });
     }
 
-    Ok(TileData(pixels.into_boxed_slice()))
+    Ok(TileData::from_vec(pixels))
 }
 
 fn validate_tile_attrs(
@@ -206,7 +206,7 @@ mod tests {
                 // else: transparent black (all zeros)
             }
         }
-        TileData(bytes.into_boxed_slice())
+        TileData::from_vec(bytes)
     }
 
     #[test]
@@ -215,8 +215,8 @@ mod tests {
         let original = checkerboard_tile();
         let exr_bytes = write_tile_exr(&original, id, 0, 0).expect("write");
         let recovered = read_tile_exr(&exr_bytes, id, 0, 0).expect("read");
-        assert_eq!(original.0.len(), recovered.0.len());
-        assert_eq!(&*original.0, &*recovered.0);
+        assert_eq!(original.byte_len(), recovered.byte_len());
+        assert_eq!(original.bytes(), recovered.bytes());
     }
 
     #[test]

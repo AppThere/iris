@@ -5,6 +5,7 @@
 //! (capacity-bounded map with FIFO eviction and dirty tracking).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 /// Canonical tile size in pixels along each edge (256 × 256).
 pub const TILE_SIZE: u32 = 256;
@@ -15,16 +16,25 @@ pub const TILE_SIZE: u32 = 256;
 // iris-pixel re-exports it here so callers use iris_pixel::TileCoord.
 pub use iris_ops::TileCoord;
 
-/// Raw f16 RGBA pixel data for one tile.
+/// Raw f16 RGBA pixel data for one tile, shared copy-on-write.
 ///
 /// Layout: `tile_size × tile_size × 4 channels × 2 bytes (f16)`.
 /// For the default [`TILE_SIZE`] of 256 this is 524 288 bytes per tile.
-/// The inner `Box<[u8]>` is public so `iris-aif` can zero-copy the bytes
-/// into an OpenEXR write buffer.
+///
+/// The buffer is behind an `Arc`: cloning a `TileData` (and therefore a
+/// [`TileCache`] or a whole `LayerTree`) only bumps a reference count, so the
+/// per-event tree snapshots that sync app state to the render thread cost
+/// O(tiles) pointer copies instead of O(pixels) memcpy. The first
+/// [`bytes_mut`][Self::bytes_mut] on a shared tile deep-copies that one tile.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TileData(pub Box<[u8]>);
+pub struct TileData(Arc<Vec<u8>>);
 
 impl TileData {
+    /// Wrap an existing pixel buffer.
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        TileData(Arc::new(bytes))
+    }
+
     /// Allocate a fully-transparent tile (all channels = f16 `0.0`).
     ///
     /// `tile_size` is the edge length in pixels; use [`TILE_SIZE`] for the
@@ -34,7 +44,22 @@ impl TileData {
             .saturating_mul(tile_size as usize)
             .saturating_mul(4)   // RGBA channels
             .saturating_mul(2);  // bytes per f16
-        TileData(vec![0u8; byte_count].into_boxed_slice())
+        Self::from_vec(vec![0u8; byte_count])
+    }
+
+    /// Read access to the raw pixel bytes (zero-copy; used by `iris-aif`'s
+    /// OpenEXR encoder and the compositor sampling loops).
+    pub fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Mutable access to the raw pixel bytes.
+    ///
+    /// Copy-on-write: if this buffer is shared with another `TileData` clone
+    /// (e.g. a render-thread snapshot), it is deep-copied once before the
+    /// mutable borrow is handed out. Hoist this call out of per-pixel loops.
+    pub fn bytes_mut(&mut self) -> &mut [u8] {
+        Arc::make_mut(&mut self.0).as_mut_slice()
     }
 
     /// Returns `true` if every pixel's alpha channel is f16 `0.0`.
@@ -90,6 +115,17 @@ impl TileCache {
     /// Look up the tile at `coord`. Returns `None` if the tile is not cached.
     pub fn get(&self, coord: TileCoord) -> Option<&TileData> {
         self.data.get(&coord)
+    }
+
+    /// Mutable lookup; marks the tile dirty (callers borrow it to paint).
+    ///
+    /// Prefer this over `get(..).cloned()` + [`insert`][Self::insert] in paint
+    /// loops: combined with [`TileData::bytes_mut`]'s copy-on-write it avoids
+    /// a 512 KB tile copy per brush dab.
+    pub fn get_mut(&mut self, coord: TileCoord) -> Option<&mut TileData> {
+        let tile = self.data.get_mut(&coord)?;
+        self.dirty.insert(coord);
+        Some(tile)
     }
 
     /// Insert or overwrite the tile at `coord` and mark it dirty.
@@ -154,7 +190,29 @@ mod tests {
     use super::*;
 
     fn solid_tile(value: u8) -> TileData {
-        TileData(vec![value; TILE_SIZE as usize * TILE_SIZE as usize * 8].into_boxed_slice())
+        TileData::from_vec(vec![value; TILE_SIZE as usize * TILE_SIZE as usize * 8])
+    }
+
+    #[test]
+    fn clone_shares_buffer_until_mutation() {
+        let mut a = solid_tile(1);
+        let b = a.clone();
+        assert_eq!(a.bytes().as_ptr(), b.bytes().as_ptr(), "clone must share");
+        a.bytes_mut()[0] = 9;
+        assert_ne!(a.bytes().as_ptr(), b.bytes().as_ptr(), "write must un-share");
+        assert_eq!(b.bytes()[0], 1, "snapshot clone must be unaffected");
+        assert_eq!(a.bytes()[0], 9);
+    }
+
+    #[test]
+    fn get_mut_marks_dirty() {
+        let mut cache = TileCache::new(16);
+        let coord = TileCoord { tx: 1, ty: 2 };
+        cache.insert(coord, solid_tile(1));
+        cache.mark_clean(coord);
+        assert_eq!(cache.dirty_coords().count(), 0);
+        assert!(cache.get_mut(coord).is_some());
+        assert_eq!(cache.dirty_coords().count(), 1, "get_mut must mark dirty");
     }
 
     #[test]
@@ -169,7 +227,7 @@ mod tests {
         let mut bytes = vec![0u8; 8];
         bytes[6] = 0xFF; // alpha = f16 large value (approximately 0.0001 in f16)
         bytes[7] = 0x00;
-        let tile = TileData(bytes.into_boxed_slice());
+        let tile = TileData::from_vec(bytes);
         assert!(!tile.is_fully_transparent());
     }
 
@@ -180,7 +238,7 @@ mod tests {
         bytes[0] = 0xFF; // R channel non-zero
         bytes[6] = 0;    // alpha = 0
         bytes[7] = 0;
-        let tile = TileData(bytes.into_boxed_slice());
+        let tile = TileData::from_vec(bytes);
         assert!(tile.is_fully_transparent());
     }
 
