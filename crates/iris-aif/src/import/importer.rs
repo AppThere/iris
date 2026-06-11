@@ -44,6 +44,16 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
         ImageFormat::Exr => decode_exr(bytes)?,
     };
 
+    // Both decoders validate dimensions against crate::limits and return a
+    // buffer of exactly width × height × 8 bytes; re-check here so the
+    // unchecked indexing in the tile loop below is provably in bounds.
+    let expected_len = crate::limits::checked_import_buffer_len(width, height)?;
+    if pixels.len() != expected_len {
+        return Err(AifError::ImportError(
+            "decoded pixel buffer does not match image dimensions".to_string(),
+        ));
+    }
+
     let tile_size = TILE_SIZE;
     let cols = width.div_ceil(tile_size);
     let rows = height.div_ceil(tile_size);

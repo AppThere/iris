@@ -51,6 +51,25 @@ pub enum OpcError {
     #[error("unsupported ZIP compression method: {0}")]
     UnsupportedCompression(String),
 
+    /// A ZIP entry's decompressed size exceeded the configured per-part limit.
+    /// Guards against decompression bombs: a small archive must not be able to
+    /// force an arbitrarily large allocation.
+    #[error("ZIP entry {part:?} exceeds the decompressed size limit of {limit} bytes")]
+    EntryTooLarge {
+        /// The offending entry's name as stored in the archive.
+        part: String,
+        /// The per-part decompressed byte limit that was exceeded.
+        limit: u64,
+    },
+
+    /// The sum of decompressed entry sizes exceeded the configured package limit.
+    /// Guards against decompression bombs spread across many entries.
+    #[error("package exceeds the total decompressed size limit of {limit} bytes")]
+    PackageTooLarge {
+        /// The whole-package decompressed byte limit that was exceeded.
+        limit: u64,
+    },
+
     /// Triggered initially upon package validation.
     #[error("missing [Content_Types].xml — not a valid OPC package")]
     MissingContentTypes,

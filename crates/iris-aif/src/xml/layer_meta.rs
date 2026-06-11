@@ -105,6 +105,10 @@ pub(crate) fn read_layer_meta_xml(
                             "heightPx",
                             part,
                         )?;
+                        // Crop bounds drive the reader's tile loop; uncapped
+                        // values let a crafted meta.xml spin it ~forever.
+                        crate::limits::validate_xml_dimension(w, "CropBounds widthPx", part)?;
+                        crate::limits::validate_xml_dimension(h, "CropBounds heightPx", part)?;
                         crop_wh = Some((w, h));
                     }
                     // Mask and Effects: forward-compat stubs.

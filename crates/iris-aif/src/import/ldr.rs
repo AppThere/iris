@@ -3,6 +3,7 @@
 
 use exr::prelude::f16;
 use crate::error::AifError;
+use crate::limits::checked_import_buffer_len;
 
 pub(crate) fn srgb_to_linear(u: f32) -> f32 {
     if u <= 0.04045 {
@@ -18,9 +19,11 @@ pub(crate) fn decode_ldr(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), AifError> 
 
     let width = img.width();
     let height = img.height();
+    // Header-declared dimensions are untrusted; cap them before allocating.
+    let buf_len = checked_import_buffer_len(width, height)?;
     let rgba = img.to_rgba8();
 
-    let mut pixels = vec![0u8; width as usize * height as usize * 8];
+    let mut pixels = vec![0u8; buf_len];
 
     for (x, y, pixel) in rgba.enumerate_pixels() {
         let r_srgb = pixel.0[0] as f32 / 255.0;

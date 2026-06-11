@@ -25,6 +25,7 @@
 
 pub mod document;
 pub mod error;
+pub mod limits;
 pub mod parts;
 pub(crate) mod xml;
 pub(crate) mod meta;
@@ -38,6 +39,7 @@ mod import;
 
 pub use document::{AifArtboard, AifCanvas, AifDocument, CanvasMode};
 pub use error::AifError;
+pub use limits::{MAX_CANVAS_DIMENSION, MAX_IMPORT_DIMENSION, MAX_IMPORT_PIXELS};
 pub use reader::AifReader;
 pub use writer::{AifWriter, WriteOptions};
 pub use import::import_raster_image;
