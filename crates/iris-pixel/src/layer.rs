@@ -47,9 +47,9 @@ pub enum LayerContent {
         /// Ordered list of child layer IDs (index 0 = topmost child).
         children: Vec<LayerId>,
     },
-    // TODO(iris): SPEC.md §3.1 — Phase 3: vector path layer (kurbo PathGraph)
-    /// Vector layer — Phase 3 stub; not yet composited.
-    Vector,
+    /// Vector layer — a scene of path objects (SPEC §3.3). Carried for
+    /// format round-trips (SVG/AI); GPU compositing is Phase 3+.
+    Vector(iris_vector::VectorLayer),
     // TODO(iris): SPEC.md §3.1 — Phase 3: text layer (Parley paragraph)
     /// Text layer — Phase 3 stub; not yet composited.
     Text,

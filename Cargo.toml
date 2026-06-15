@@ -43,6 +43,7 @@ iris-vector     = { path = "crates/iris-vector" }
 iris-aif        = { path = "crates/iris-aif" }
 iris-psd        = { path = "crates/iris-psd" }
 iris-ora        = { path = "crates/iris-ora" }
+iris-svg        = { path = "crates/iris-svg" }
 iris-canvas     = { path = "crates/iris-canvas" }
 iris-plugin-api = { path = "crates/iris-plugin-api" }
 iris-tools      = { path = "crates/iris-tools" }
