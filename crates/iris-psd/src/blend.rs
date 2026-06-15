@@ -53,6 +53,41 @@ pub(crate) fn map_blend_mode(debug_name: &str) -> BlendMode {
     }
 }
 
+/// Return the 4-byte Photoshop blend-mode key for an Iris [`BlendMode`]
+/// (inverse of [`map_blend_mode`], used when writing PSD layer records).
+pub(crate) fn to_psd_key(mode: BlendMode) -> [u8; 4] {
+    let key: &[u8; 4] = match mode {
+        BlendMode::Normal => b"norm",
+        BlendMode::Dissolve => b"diss",
+        BlendMode::Darken => b"dark",
+        BlendMode::Multiply => b"mul ",
+        BlendMode::ColorBurn => b"idiv",
+        BlendMode::LinearBurn => b"lbrn",
+        BlendMode::DarkerColor => b"dkCl",
+        BlendMode::Lighten => b"lite",
+        BlendMode::Screen => b"scrn",
+        BlendMode::ColorDodge => b"div ",
+        BlendMode::LinearDodge => b"lddg",
+        BlendMode::LighterColor => b"lgCl",
+        BlendMode::Overlay => b"over",
+        BlendMode::SoftLight => b"sLit",
+        BlendMode::HardLight => b"hLit",
+        BlendMode::VividLight => b"vLit",
+        BlendMode::LinearLight => b"lLit",
+        BlendMode::PinLight => b"pLit",
+        BlendMode::HardMix => b"hMix",
+        BlendMode::Difference => b"diff",
+        BlendMode::Exclusion => b"smud",
+        BlendMode::Subtract => b"fsub",
+        BlendMode::Divide => b"fdiv",
+        BlendMode::Hue => b"hue ",
+        BlendMode::Saturation => b"sat ",
+        BlendMode::Color => b"colr",
+        BlendMode::Luminosity => b"lum ",
+    };
+    *key
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,5 +103,21 @@ mod tests {
     fn pass_through_and_unknown_degrade_to_normal() {
         assert_eq!(map_blend_mode("PassThrough"), BlendMode::Normal);
         assert_eq!(map_blend_mode("☃"), BlendMode::Normal);
+    }
+
+    #[test]
+    fn psd_key_round_trips_through_debug_name() {
+        // Every Iris mode must emit a 4-byte PSD key the reader maps back.
+        for (mode, name) in [
+            (BlendMode::Normal, "Normal"),
+            (BlendMode::Multiply, "Multiply"),
+            (BlendMode::ColorBurn, "ColorBurn"),
+            (BlendMode::Subtract, "Subtract"),
+            (BlendMode::Luminosity, "Luminosity"),
+        ] {
+            let key = to_psd_key(mode);
+            assert_eq!(key.len(), 4);
+            assert_eq!(map_blend_mode(name), mode);
+        }
     }
 }

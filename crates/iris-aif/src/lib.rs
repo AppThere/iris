@@ -33,6 +33,7 @@ pub(crate) mod preview;
 pub mod reader;
 pub mod writer;
 mod import;
+mod export;
 
 // ── Primary type re-exports ───────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ pub use error::AifError;
 pub use reader::AifReader;
 pub use writer::{AifWriter, WriteOptions};
 pub use import::{import_raster_image, layer_from_rgba8};
+pub use export::{layer_to_rgba8, linear_to_srgb, LayerPixels};
 
 // ── OPC surface re-export ─────────────────────────────────────────────────────
 

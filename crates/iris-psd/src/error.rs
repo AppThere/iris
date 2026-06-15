@@ -37,6 +37,16 @@ pub enum PsdError {
     #[error("malformed PSD: {0}")]
     Corrupt(String),
 
+    /// The document exceeds PSD's 30,000-pixel-per-dimension limit (PSB, which
+    /// allows up to 300,000, is not yet written).
+    #[error("document {width}×{height} exceeds the PSD 30000px dimension limit")]
+    DimensionsTooLarge {
+        /// Canvas width in pixels.
+        width: u32,
+        /// Canvas height in pixels.
+        height: u32,
+    },
+
     /// I/O error while reading the file from disk or a reader.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
