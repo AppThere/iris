@@ -55,8 +55,8 @@ loro            = { version = "1" }
 thiserror       = { version = "2" }
 uuid            = { version = "1", features = ["v4"] }
 tracing         = { version = "0.1" }
-lz4_flex        = { version = "0.11" }
-flatbuffers     = { version = "24" }
+lz4_flex        = { version = "0.13" }
+flatbuffers     = { version = "25" }
 # EXR: desktop uses openexr-rs (C++ bindings); mobile uses exr (pure Rust)
 # Feature-gated per platform — see iris-aif/Cargo.toml
 exr             = { version = "1" }
@@ -65,7 +65,7 @@ quick-xml       = { version = "0.36" }
 serde           = { version = "1", features = ["derive"] }
 proptest        = { version = "1" }
 bytemuck        = { version = "1", features = ["derive"] }
-png             = { version = "0.17" }
+png             = { version = "0.18" }
 image           = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [patch.crates-io]
