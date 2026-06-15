@@ -8,11 +8,10 @@
 
 use std::path::Path;
 
-use iris_aif::AifDocument;
+use iris_aif::{flatten_to_rgba8, AifDocument};
 
 use crate::error::PsdError;
 
-mod composite;
 mod records;
 
 /// PSD's maximum dimension per side (PSB raises this to 300,000).
@@ -67,7 +66,7 @@ impl PsdWriter {
 
         records::write_layer_and_mask_section(&mut buf, &doc.layers);
 
-        let merged = composite::flatten(&doc.layers, w, h);
+        let merged = flatten_to_rgba8(&doc.layers, w, h);
         write_image_data(&mut buf, &merged, w, h);
 
         Ok(buf)

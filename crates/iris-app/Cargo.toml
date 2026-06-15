@@ -18,6 +18,7 @@ iris-pixel         = { workspace = true }
 iris-tools         = { workspace = true }
 iris-aif           = { workspace = true }
 iris-psd           = { workspace = true }
+iris-ora           = { workspace = true }
 kurbo              = { workspace = true }
 dioxus             = { workspace = true }
 tracing            = { workspace = true }

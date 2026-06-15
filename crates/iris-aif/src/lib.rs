@@ -42,7 +42,9 @@ pub use error::AifError;
 pub use reader::AifReader;
 pub use writer::{AifWriter, WriteOptions};
 pub use import::{import_raster_image, layer_from_rgba8};
-pub use export::{layer_to_rgba8, linear_to_srgb, LayerPixels};
+pub use export::{
+    encode_png_rgba8, flatten_to_rgba8, layer_to_rgba8, linear_to_srgb, LayerPixels,
+};
 
 // ── OPC surface re-export ─────────────────────────────────────────────────────
 

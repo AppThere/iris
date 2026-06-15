@@ -18,6 +18,17 @@ use crate::state::{AppState, OpenDocument};
 // TODO(iris): move LAYERS_PANEL_WIDTH to appthere_ui layout tokens
 const LAYERS_PANEL_WIDTH: f32 = 240.0;
 
+/// Replace the current document with one parsed from a format adapter
+/// (PSD/ORA), selecting its first root layer.
+fn open_as_document(mut state: Signal<AppState>, aif: iris_aif::AifDocument, name: &str) {
+    let doc = OpenDocument::from_aif(aif, name);
+    let first = doc.tree.root_layer_ids().first().copied();
+    let mut s = state.write();
+    s.document = Some(doc);
+    s.selected_layer = first;
+    s.canvas_dirty = true;
+}
+
 #[component]
 pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
     rsx! {
@@ -119,8 +130,9 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                     "image/webp".to_string(),
                                     "image/x-exr".to_string(),
                                     "image/vnd.adobe.photoshop".to_string(),
+                                    "image/openraster".to_string(),
                                 ],
-                                filter_label: Some("Images & PSD".to_string()),
+                                filter_label: Some("Images, PSD & ORA".to_string()),
                                 ..Default::default()
                             };
                             match picker.pick_file_to_open(options).await {
@@ -134,23 +146,20 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                                 tracing::error!("Failed to read imported file: {}", e);
                                                 return;
                                             }
-                                            // PSD files (signature "8BPS") open as a
-                                            // new multi-layer document; other formats
-                                            // import as a single layer.
+                                            // PSD (8BPS) and ORA (ZIP) open as a new
+                                            // multi-layer document; other formats import
+                                            // as a single layer.
                                             if bytes.starts_with(b"8BPS") {
                                                 match iris_psd::PsdReader::from_bytes(&bytes) {
-                                                    Ok(aif) => {
-                                                        let doc = OpenDocument::from_aif(aif, &name);
-                                                        let first =
-                                                            doc.tree.root_layer_ids().first().copied();
-                                                        let mut s = state.write();
-                                                        s.document = Some(doc);
-                                                        s.selected_layer = first;
-                                                        s.canvas_dirty = true;
-                                                    }
-                                                    Err(e) => {
-                                                        tracing::error!("Failed to open PSD: {}", e);
-                                                    }
+                                                    Ok(aif) => open_as_document(state, aif, &name),
+                                                    Err(e) => tracing::error!("Failed to open PSD: {}", e),
+                                                }
+                                                return;
+                                            }
+                                            if bytes.starts_with(b"PK\x03\x04") {
+                                                match iris_ora::OraReader::from_bytes(&bytes) {
+                                                    Ok(aif) => open_as_document(state, aif, &name),
+                                                    Err(e) => tracing::error!("Failed to open ORA: {}", e),
                                                 }
                                                 return;
                                             }
