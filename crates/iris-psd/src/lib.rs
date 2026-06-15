@@ -21,6 +21,7 @@
 mod blend;
 mod convert;
 mod error;
+mod layers;
 mod reader;
 
 pub use error::PsdError;
