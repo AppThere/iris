@@ -40,7 +40,7 @@ pub use document::{AifArtboard, AifCanvas, AifDocument, CanvasMode};
 pub use error::AifError;
 pub use reader::AifReader;
 pub use writer::{AifWriter, WriteOptions};
-pub use import::import_raster_image;
+pub use import::{import_raster_image, layer_from_rgba8};
 
 // ── OPC surface re-export ─────────────────────────────────────────────────────
 

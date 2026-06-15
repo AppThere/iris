@@ -1,12 +1,14 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
+use exr::prelude::f16;
+
 use iris_pixel::{
     BitDepth, BlendMode, ChannelLayout, CropBounds, ExrCompression, Layer, LayerContent,
     PixelLayer, TileCache, TileCoord, TileData, LINEAR_SRGB, TILE_SIZE,
 };
 use crate::error::AifError;
-use super::ldr::decode_ldr;
+use super::ldr::{decode_ldr, srgb_to_linear};
 use super::exr::decode_exr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +46,39 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
         ImageFormat::Exr => decode_exr(bytes)?,
     };
 
+    Ok(layer_from_f16_pixels(width, height, &pixels, name))
+}
+
+/// Build a tiled f16 RGBA [`Layer`] from straight-alpha 8-bit **sRGB** pixels.
+///
+/// `rgba8` is `width * height * 4` bytes in `[R, G, B, A, …]` order, as produced
+/// by format adapters that decode to 8-bit (e.g. PSD layers). RGB channels are
+/// converted from sRGB gamma to the linear working space; alpha is left straight.
+/// Trailing bytes beyond `width * height * 4` are ignored, and a short buffer
+/// yields transparent pixels for the missing tail (no panic on malformed input).
+pub fn layer_from_rgba8(width: u32, height: u32, rgba8: &[u8], name: &str) -> Layer {
+    let px_count = width as usize * height as usize;
+    let mut pixels = vec![0u8; px_count * 8];
+
+    for (i, px) in rgba8.chunks_exact(4).take(px_count).enumerate() {
+        let r = f16::from_f32(srgb_to_linear(px[0] as f32 / 255.0));
+        let g = f16::from_f32(srgb_to_linear(px[1] as f32 / 255.0));
+        let b = f16::from_f32(srgb_to_linear(px[2] as f32 / 255.0));
+        let a = f16::from_f32(px[3] as f32 / 255.0);
+
+        let base = i * 8;
+        pixels[base..base + 2].copy_from_slice(&r.to_bits().to_le_bytes());
+        pixels[base + 2..base + 4].copy_from_slice(&g.to_bits().to_le_bytes());
+        pixels[base + 4..base + 6].copy_from_slice(&b.to_bits().to_le_bytes());
+        pixels[base + 6..base + 8].copy_from_slice(&a.to_bits().to_le_bytes());
+    }
+
+    layer_from_f16_pixels(width, height, &pixels, name)
+}
+
+/// Tile a row-major f16 RGBA pixel buffer (`width * height * 8` bytes) into a
+/// [`Layer`]. Fully-transparent tiles are omitted (sparse-tile rule, §4.7).
+fn layer_from_f16_pixels(width: u32, height: u32, pixels: &[u8], name: &str) -> Layer {
     let tile_size = TILE_SIZE;
     let cols = width.div_ceil(tile_size);
     let rows = height.div_ceil(tile_size);
@@ -68,7 +103,10 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
                     let img_idx = (global_y as usize * width as usize + global_x as usize) * 8;
                     let tile_idx = (local_y as usize * tile_size as usize + local_x as usize) * 8;
 
-                    tile_data.0[tile_idx..tile_idx + 8].copy_from_slice(&pixels[img_idx..img_idx + 8]);
+                    if img_idx + 8 <= pixels.len() {
+                        tile_data.0[tile_idx..tile_idx + 8]
+                            .copy_from_slice(&pixels[img_idx..img_idx + 8]);
+                    }
                 }
             }
 
@@ -78,7 +116,7 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
         }
     }
 
-    Ok(Layer {
+    Layer {
         id: uuid::Uuid::new_v4(),
         name: name.to_string(),
         visible: true,
@@ -102,5 +140,5 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
             }),
             tiles,
         }),
-    })
+    }
 }

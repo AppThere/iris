@@ -13,7 +13,7 @@ use iris_pixel::{
     TileCache, LINEAR_SRGB,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, OpenDocument};
 
 // TODO(iris): move LAYERS_PANEL_WIDTH to appthere_ui layout tokens
 const LAYERS_PANEL_WIDTH: f32 = 240.0;
@@ -118,8 +118,9 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                     "image/jpeg".to_string(),
                                     "image/webp".to_string(),
                                     "image/x-exr".to_string(),
+                                    "image/vnd.adobe.photoshop".to_string(),
                                 ],
-                                filter_label: Some("Raster Images".to_string()),
+                                filter_label: Some("Images & PSD".to_string()),
                                 ..Default::default()
                             };
                             match picker.pick_file_to_open(options).await {
@@ -131,6 +132,26 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                             use std::io::Read;
                                             if let Err(e) = reader.read_to_end(&mut bytes) {
                                                 tracing::error!("Failed to read imported file: {}", e);
+                                                return;
+                                            }
+                                            // PSD files (signature "8BPS") open as a
+                                            // new multi-layer document; other formats
+                                            // import as a single layer.
+                                            if bytes.starts_with(b"8BPS") {
+                                                match iris_psd::PsdReader::from_bytes(&bytes) {
+                                                    Ok(aif) => {
+                                                        let doc = OpenDocument::from_aif(aif, &name);
+                                                        let first =
+                                                            doc.tree.root_layer_ids().first().copied();
+                                                        let mut s = state.write();
+                                                        s.document = Some(doc);
+                                                        s.selected_layer = first;
+                                                        s.canvas_dirty = true;
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!("Failed to open PSD: {}", e);
+                                                    }
+                                                }
                                                 return;
                                             }
                                             match iris_aif::import_raster_image(&bytes, &name) {

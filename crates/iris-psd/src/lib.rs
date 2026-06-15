@@ -1,11 +1,27 @@
 // Copyright 2024 AppThere Project
 // SPDX-License-Identifier: Apache-2.0
 
-//! Photoshop PSD/PSB import/export adapter
+//! Photoshop PSD import adapter.
 //!
-//! See SPEC.md and crates/iris-psd/BRIEF.md before implementing.
+//! Converts a Photoshop `.psd` document into Iris's native
+//! [`iris_aif::AifDocument`] model. Phase 1 supports flat RGB/Grayscale pixel
+//! layers; groups, adjustment layers, masks, smart objects, layer effects,
+//! CMYK/Lab colour modes, PSB (large documents), and PSD *writing* are
+//! deferred to later phases (see `crates/iris-psd/BRIEF.md`).
+//!
+//! ```ignore
+//! use iris_psd::PsdReader;
+//! let doc = PsdReader::read(std::path::Path::new("art.psd"))?;
+//! println!("{} layers", doc.layers.root_layer_ids().len());
+//! ```
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-// TODO(iris): SPEC.md §<section> — stub only; implementation gated on milestone plan
+mod blend;
+mod convert;
+mod error;
+mod reader;
+
+pub use error::PsdError;
+pub use reader::PsdReader;

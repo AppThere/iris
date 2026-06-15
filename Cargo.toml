@@ -41,6 +41,7 @@ iris-ops        = { path = "crates/iris-ops" }
 iris-pixel      = { path = "crates/iris-pixel" }
 iris-vector     = { path = "crates/iris-vector" }
 iris-aif        = { path = "crates/iris-aif" }
+iris-psd        = { path = "crates/iris-psd" }
 iris-canvas     = { path = "crates/iris-canvas" }
 iris-plugin-api = { path = "crates/iris-plugin-api" }
 iris-tools      = { path = "crates/iris-tools" }
@@ -67,6 +68,8 @@ proptest        = { version = "1" }
 bytemuck        = { version = "1", features = ["derive"] }
 png             = { version = "0.17" }
 image           = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# PSD/PSB import (SPEC.md §5.1 names the `psd` crate for reading)
+psd             = { version = "0.3" }
 
 [patch.crates-io]
 # COMPAT(dioxus): fontique patch removed — blitz-dom 0.2.4 resolves fontique 0.6.0
