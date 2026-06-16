@@ -274,7 +274,7 @@ fn layer_type_str(content: &LayerContent) -> &'static str {
     match content {
         LayerContent::Pixel(_) => "pixel",
         LayerContent::Group { .. } => "group",
-        LayerContent::Vector => "vector",
+        LayerContent::Vector(_) => "vector",
         LayerContent::Text => "text",
         LayerContent::Adjustment => "adjustment",
         LayerContent::Fill => "fill",

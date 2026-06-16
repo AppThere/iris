@@ -130,6 +130,17 @@ impl OpenDocument {
         Self { title: title.to_string(), path: None, tree, viewport, dirty: false }
     }
 
+    /// Build a document from a parsed [`iris_aif::AifDocument`], as produced by
+    /// a format adapter (e.g. `iris-psd`). The layer tree is adopted directly
+    /// and the viewport is centred on the canvas.
+    pub fn from_aif(doc: iris_aif::AifDocument, title: &str) -> Self {
+        let tree = doc.layers;
+        let mut viewport = CanvasViewport::new();
+        viewport.pan =
+            kurbo::Vec2::new(tree.canvas_width as f64 / 2.0, tree.canvas_height as f64 / 2.0);
+        Self { title: title.to_string(), path: None, tree, viewport, dirty: false }
+    }
+
     pub fn zoom_percent(&self) -> u32 {
         (self.viewport.zoom * 100.0).round() as u32
     }
