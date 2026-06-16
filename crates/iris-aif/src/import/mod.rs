@@ -10,4 +10,4 @@ mod importer;
 #[cfg(test)]
 mod tests;
 
-pub use importer::import_raster_image;
+pub use importer::{import_raster_image, layer_from_rgba8};

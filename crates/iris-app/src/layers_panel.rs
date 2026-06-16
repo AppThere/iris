@@ -13,10 +13,28 @@ use iris_pixel::{
     TileCache, LINEAR_SRGB,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, OpenDocument};
 
 // TODO(iris): move LAYERS_PANEL_WIDTH to appthere_ui layout tokens
 const LAYERS_PANEL_WIDTH: f32 = 240.0;
+
+/// Heuristic: does this byte buffer look like an SVG/XML document?
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let head = &bytes[..bytes.len().min(512)];
+    let trimmed = head.iter().position(|b| !b.is_ascii_whitespace()).map(|i| &head[i..]).unwrap_or(head);
+    trimmed.starts_with(b"<?xml") || trimmed.starts_with(b"<svg")
+}
+
+/// Replace the current document with one parsed from a format adapter
+/// (PSD/ORA/SVG), selecting its first root layer.
+fn open_as_document(mut state: Signal<AppState>, aif: iris_aif::AifDocument, name: &str) {
+    let doc = OpenDocument::from_aif(aif, name);
+    let first = doc.tree.root_layer_ids().first().copied();
+    let mut s = state.write();
+    s.document = Some(doc);
+    s.selected_layer = first;
+    s.canvas_dirty = true;
+}
 
 #[component]
 pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
@@ -118,8 +136,11 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                     "image/jpeg".to_string(),
                                     "image/webp".to_string(),
                                     "image/x-exr".to_string(),
+                                    "image/vnd.adobe.photoshop".to_string(),
+                                    "image/openraster".to_string(),
+                                    "image/svg+xml".to_string(),
                                 ],
-                                filter_label: Some("Raster Images".to_string()),
+                                filter_label: Some("Images, PSD, ORA & SVG".to_string()),
                                 ..Default::default()
                             };
                             match picker.pick_file_to_open(options).await {
@@ -131,6 +152,31 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                                             use std::io::Read;
                                             if let Err(e) = reader.read_to_end(&mut bytes) {
                                                 tracing::error!("Failed to read imported file: {}", e);
+                                                return;
+                                            }
+                                            // PSD (8BPS) and ORA (ZIP) open as a new
+                                            // multi-layer document; other formats import
+                                            // as a single layer.
+                                            if bytes.starts_with(b"8BPS") {
+                                                match iris_psd::PsdReader::from_bytes(&bytes) {
+                                                    Ok(aif) => open_as_document(state, aif, &name),
+                                                    Err(e) => tracing::error!("Failed to open PSD: {}", e),
+                                                }
+                                                return;
+                                            }
+                                            if bytes.starts_with(b"PK\x03\x04") {
+                                                match iris_ora::OraReader::from_bytes(&bytes) {
+                                                    Ok(aif) => open_as_document(state, aif, &name),
+                                                    Err(e) => tracing::error!("Failed to open ORA: {}", e),
+                                                }
+                                                return;
+                                            }
+                                            if looks_like_svg(&bytes) {
+                                                let text = String::from_utf8_lossy(&bytes);
+                                                match iris_svg::SvgReader::from_str(&text) {
+                                                    Ok(aif) => open_as_document(state, aif, &name),
+                                                    Err(e) => tracing::error!("Failed to open SVG: {}", e),
+                                                }
                                                 return;
                                             }
                                             match iris_aif::import_raster_image(&bytes, &name) {

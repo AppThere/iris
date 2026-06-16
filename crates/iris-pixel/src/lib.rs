@@ -26,3 +26,7 @@ pub use layer::{Layer, LayerContent, LayerId, LayerMask, LayerProp, PropValue};
 pub use pixel_layer::{BitDepth, ChannelLayout, CropBounds, ExrCompression, PixelLayer};
 pub use tile::{TileCache, TileCoord, TileData, TILE_SIZE};
 pub use tree::{LayerTree, LayerTreeError};
+
+/// Re-export the vector document model so callers that hold a [`LayerTree`]
+/// can construct [`LayerContent::Vector`] payloads without a separate import.
+pub use iris_vector::VectorLayer;
