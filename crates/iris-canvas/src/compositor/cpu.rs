@@ -10,11 +10,11 @@
 //! of each cluster and left the rest as background — visible as a dithered
 //! checkerboard on high-DPI displays.
 
-use std::sync::OnceLock;
-
-use iris_pixel::{LayerContent, LayerTree, TileCoord, TileData, TILE_SIZE};
+use iris_pixel::{blend, BlendMode, LayerContent, LayerTree, TileCoord, TileData, TILE_SIZE};
 
 use crate::viewport::CanvasViewport;
+
+use super::cpu_color::{f16_to_f32, lut_index, srgb_lut};
 
 /// Affine map from physical-pixel centres to document space.
 ///
@@ -105,7 +105,7 @@ pub(crate) fn composite_rgba8(
                         &mut acc, tile_data, tx, ty, offset_x, offset_y,
                         viewport, &map,
                         width_px, height_px, logical_w, logical_h, scale_x, scale_y,
-                        layer.opacity,
+                        layer.opacity, layer.blend_mode,
                     );
                 }
                 // Absent tile = transparent = no contribution to composite.
@@ -177,6 +177,7 @@ fn blit_tile(
     logical_w: u32, logical_h: u32,
     scale_x: f64, scale_y: f64,
     opacity: f32,
+    mode: BlendMode,
 ) {
     let ts = TILE_SIZE as usize;
     let tile_x0 = offset_x + tx as f64 * ts as f64;
@@ -202,11 +203,25 @@ fn blit_tile(
             if sa <= 0.0 {
                 continue;
             }
-            let sr = f16_to_f32(u16::from_le_bytes([bytes[ib],     bytes[ib + 1]]));
-            let sg = f16_to_f32(u16::from_le_bytes([bytes[ib + 2], bytes[ib + 3]]));
-            let sb = f16_to_f32(u16::from_le_bytes([bytes[ib + 4], bytes[ib + 5]]));
+            let mut sr = f16_to_f32(u16::from_le_bytes([bytes[ib],     bytes[ib + 1]]));
+            let mut sg = f16_to_f32(u16::from_le_bytes([bytes[ib + 2], bytes[ib + 3]]));
+            let mut sb = f16_to_f32(u16::from_le_bytes([bytes[ib + 4], bytes[ib + 5]]));
             let ob = (sy * physical_w as usize + sx) * 4;
             let inv = 1.0 - sa;
+            let ad = acc[ob + 3];
+            // For non-Normal modes, replace the source colour with the blended
+            // colour mixed by backdrop coverage (W3C §blending):
+            //   Cs' = (1 − αb)·Cs + αb·B(Cb, Cs)
+            // then the same premultiplied source-over as Normal. The backdrop
+            // straight colour Cb is the un-premultiplied accumulator.
+            if mode != BlendMode::Normal && ad > f32::EPSILON {
+                let inv_ad = 1.0 / ad;
+                let cb = [acc[ob] * inv_ad, acc[ob + 1] * inv_ad, acc[ob + 2] * inv_ad];
+                let b = blend(mode, cb, [sr, sg, sb]);
+                sr = (1.0 - ad) * sr + ad * b[0];
+                sg = (1.0 - ad) * sg + ad * b[1];
+                sb = (1.0 - ad) * sb + ad * b[2];
+            }
             // Porter-Duff "over": dst = src_premul + dst × (1 − src_alpha)
             acc[ob    ] = sr * sa + acc[ob    ] * inv;
             acc[ob + 1] = sg * sa + acc[ob + 1] * inv;
@@ -250,44 +265,3 @@ fn fill_document_background(
     }
 }
 
-/// Convert IEEE 754 half-precision bits to f32.
-/// Subnormal f16 values (exp=0, mant≠0) are treated as zero — adequate for pixels.
-pub(crate) fn f16_to_f32(bits: u16) -> f32 {
-    let sign = ((bits as u32) & 0x8000) << 16;
-    let exp  = ((bits as u32) & 0x7C00) >> 10;
-    let mant = (bits as u32) & 0x03FF;
-    f32::from_bits(match exp {
-        0  => sign,                                    // ±zero or subnormal → zero
-        31 => sign | 0x7F80_0000 | (mant << 13),       // ±inf / NaN pass-through
-        e  => sign | ((e + 112) << 23) | (mant << 13), // normal: rebias 15→127
-    })
-}
-
-const LUT_SIZE: usize = 4096;
-
-fn lut_index(linear: f32) -> usize {
-    (linear.clamp(0.0, 1.0) * (LUT_SIZE - 1) as f32) as usize
-}
-
-/// Linear-light → sRGB u8 lookup table. `powf` per channel per pixel was the
-/// dominant cost of the conversion loop (~10M `powf` per frame at 1080p).
-fn srgb_lut() -> &'static [u8; LUT_SIZE] {
-    static LUT: OnceLock<[u8; LUT_SIZE]> = OnceLock::new();
-    LUT.get_or_init(|| {
-        let mut lut = [0u8; LUT_SIZE];
-        for (i, v) in lut.iter_mut().enumerate() {
-            *v = to_srgb_u8(i as f32 / (LUT_SIZE - 1) as f32);
-        }
-        lut
-    })
-}
-
-/// Encode a linear-light [0,1] value to sRGB gamma and clamp to u8.
-fn to_srgb_u8(linear: f32) -> u8 {
-    let s = if linear <= 0.003_130_8 {
-        12.92 * linear
-    } else {
-        1.055 * linear.clamp(0.0, 1.0).powf(1.0 / 2.4) - 0.055
-    };
-    (s.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
-}

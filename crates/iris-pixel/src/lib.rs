@@ -14,6 +14,7 @@
 #![deny(missing_docs)]
 
 mod blend;
+mod blend_math;
 mod color_space;
 mod layer;
 mod pixel_layer;
@@ -22,6 +23,7 @@ mod tile_data;
 mod tree;
 
 pub use blend::BlendMode;
+pub use blend_math::blend;
 pub use color_space::{ColorSpaceId, CMYK_GENERIC, DISPLAY_P3, LINEAR_SRGB, PROPHOTO_RGB, SRGB};
 pub use layer::{Layer, LayerContent, LayerId, LayerMask, LayerProp, PropValue};
 pub use pixel_layer::{BitDepth, ChannelLayout, CropBounds, ExrCompression, PixelLayer};

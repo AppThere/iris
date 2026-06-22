@@ -4,8 +4,10 @@
 //! Pixel compositor: composites all visible [`iris_pixel::LayerTree`] layers
 //! into a single wgpu texture representing the current viewport.
 //!
-//! Phase 2 blend support: Normal only — other blend modes log a warning and
-//! the layer is skipped (SPEC.md §4.8, full set arrives with Phase 4 shaders).
+//! Blend support: the CPU reference path ([`cpu`]) composites all 27 blend
+//! modes via [`iris_pixel::blend`]. The GPU paths ([`composite`], [`gpu_frame`])
+//! still wire only Normal — other modes log a warning and the layer is skipped
+//! until the backdrop-sampling blend shader lands (SPEC.md §4.8).
 //!
 //! Sub-modules:
 //! - [`api`] — public [`Compositor`] / [`CompositorError`] surface
@@ -18,6 +20,7 @@
 mod api;
 mod composite;
 mod cpu;
+mod cpu_color;
 #[cfg(test)]
 mod cpu_tests;
 mod cpu_upload;

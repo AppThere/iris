@@ -15,6 +15,8 @@ use crate::viewport::CanvasViewport;
 
 /// f16 1.0 little-endian.
 const F16_ONE: [u8; 2] = [0x00, 0x3C];
+/// f16 0.5 little-endian.
+const F16_HALF: [u8; 2] = [0x00, 0x38];
 
 /// A 256×256 document with one layer whose (0,0) tile is solid opaque red.
 fn red_tile_tree() -> LayerTree {
@@ -115,6 +117,67 @@ fn background_white_inside_transparent_outside() {
     assert_eq!(inside, [255, 255, 255, 255], "inside doc must be white");
     let outside = pixel(&buf, 200, 10, 10);
     assert_eq!(outside[3], 0, "outside doc must be transparent: {outside:?}");
+}
+
+/// A 256×256 layer whose (0,0) tile is a solid opaque grey of the given f16
+/// channel bytes, with the supplied blend mode.
+fn gray_layer(chan: [u8; 2], mode: BlendMode) -> Layer {
+    let ts = TILE_SIZE as usize;
+    let mut bytes = vec![0u8; ts * ts * 8];
+    for px in bytes.chunks_exact_mut(8) {
+        px[0] = chan[0]; px[1] = chan[1]; // R
+        px[2] = chan[0]; px[3] = chan[1]; // G
+        px[4] = chan[0]; px[5] = chan[1]; // B
+        px[6] = F16_ONE[0]; px[7] = F16_ONE[1]; // A = 1.0
+    }
+    let mut tiles = TileCache::new(4);
+    tiles.insert(TileCoord { tx: 0, ty: 0 }, TileData::from_vec(bytes));
+    Layer {
+        id: uuid::Uuid::new_v4(),
+        name: "gray".into(),
+        visible: true,
+        locked: false,
+        opacity: 1.0,
+        blend_mode: mode,
+        clipping_mask: false,
+        mask: None,
+        content: LayerContent::Pixel(PixelLayer {
+            channel_layout: ChannelLayout::Rgba,
+            bit_depth: BitDepth::F16,
+            color_space: LINEAR_SRGB,
+            compression: ExrCompression::Zip,
+            canvas_offset_x: 0,
+            canvas_offset_y: 0,
+            crop_bounds: None,
+            tiles,
+        }),
+    }
+}
+
+/// Composite a 0.5-grey top layer over a 0.5-grey backdrop and return the centre
+/// pixel's red channel for the given top-layer blend mode.
+fn center_red_for_mode(mode: BlendMode) -> u8 {
+    let mut tree = LayerTree::new(TILE_SIZE, TILE_SIZE, 72.0, 72.0);
+    tree.add_layer(None, 0, gray_layer(F16_HALF, BlendMode::Normal)).expect("backdrop");
+    tree.add_layer(None, 0, gray_layer(F16_HALF, mode)).expect("top"); // index 0 = top
+    let vp = centered_viewport(256, 256);
+    let buf = composite_rgba8(&tree, &vp, 256, 256, 1.0);
+    pixel(&buf, 256, 128, 128)[0]
+}
+
+/// End-to-end wiring: a non-Normal blend mode must change the composite. Two
+/// 0.5 greys multiply to 0.25 (linear), which is markedly darker than the
+/// Normal result of 0.5. Locks in that `blit_tile` honours `layer.blend_mode`.
+#[test]
+fn multiply_blend_mode_darkens_composite() {
+    let normal = center_red_for_mode(BlendMode::Normal);
+    let multiply = center_red_for_mode(BlendMode::Multiply);
+    let screen = center_red_for_mode(BlendMode::Screen);
+    // sRGB(0.5) ≈ 188, sRGB(0.25) ≈ 137, sRGB(0.75) ≈ 224.
+    assert!((180..=196).contains(&normal), "normal grey: {normal}");
+    assert!((130..=145).contains(&multiply), "multiply grey: {multiply}");
+    assert!(multiply < normal - 30, "multiply must darken: {multiply} vs {normal}");
+    assert!(screen > normal + 20, "screen must lighten: {screen} vs {normal}");
 }
 
 /// `FrameMap` must agree exactly with `screen_to_doc` (the event-handler

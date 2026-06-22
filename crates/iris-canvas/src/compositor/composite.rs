@@ -41,7 +41,11 @@ pub(super) fn run(
             continue;
         };
         if layer.blend_mode != BlendMode::Normal {
-            // TODO(iris): SPEC.md §4.8 — Phase 4: non-Normal WGSL compute shaders
+            // The CPU path (`cpu.rs`) composites all 27 modes via the reference
+            // `iris_pixel::blend`. The GPU path still skips non-Normal until the
+            // programmable-blend shader lands (WebGPU has no framebuffer fetch,
+            // so this needs a ping-pong / compute pass that samples the backdrop).
+            // TODO(iris): SPEC.md §4.8 — Phase 4: GPU blend shader matching iris_pixel::blend.
             tracing::warn!(
                 layer_id = ?layer.id,
                 mode = ?layer.blend_mode,
