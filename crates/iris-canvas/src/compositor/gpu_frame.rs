@@ -93,12 +93,14 @@ impl GpuFrame {
                 continue;
             };
             if layer.blend_mode != BlendMode::Normal {
-                // CPU reference path composites all 27 modes (iris_pixel::blend);
-                // the GPU frame path needs a backdrop-sampling blend shader.
+                // No backdrop-sampling blend shader on the GPU path yet, so
+                // non-Normal layers composite *as Normal* here — still visible,
+                // rather than vanishing. The CPU reference path (cpu.rs) does the
+                // real blend via iris_pixel::blend; the panel writes the mode and
+                // it round-trips through AIF/PSD/ORA regardless.
                 // TODO(iris): SPEC.md §4.8 — Phase 4: GPU blend shader matching iris_pixel::blend.
-                tracing::warn!(layer_id = ?layer.id, mode = ?layer.blend_mode,
-                    "GPU frame compositor: only Normal blend supported; skipping layer");
-                continue;
+                tracing::trace!(layer_id = ?layer.id, mode = ?layer.blend_mode,
+                    "GPU frame compositor: blending as Normal until blend shader lands");
             }
             let offset_x = px.canvas_offset_x as f64;
             let offset_y = px.canvas_offset_y as f64;

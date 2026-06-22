@@ -6,8 +6,9 @@
 //!
 //! Blend support: the CPU reference path ([`cpu`]) composites all 27 blend
 //! modes via [`iris_pixel::blend`]. The GPU paths ([`composite`], [`gpu_frame`])
-//! still wire only Normal — other modes log a warning and the layer is skipped
-//! until the backdrop-sampling blend shader lands (SPEC.md §4.8).
+//! have no backdrop-sampling blend shader yet, so they composite non-Normal
+//! layers *as Normal* (visible, not skipped) until that shader lands
+//! (SPEC.md §4.8).
 //!
 //! Sub-modules:
 //! - [`api`] — public [`Compositor`] / [`CompositorError`] surface

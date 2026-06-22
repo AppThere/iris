@@ -41,17 +41,16 @@ pub(super) fn run(
             continue;
         };
         if layer.blend_mode != BlendMode::Normal {
-            // The CPU path (`cpu.rs`) composites all 27 modes via the reference
-            // `iris_pixel::blend`. The GPU path still skips non-Normal until the
-            // programmable-blend shader lands (WebGPU has no framebuffer fetch,
-            // so this needs a ping-pong / compute pass that samples the backdrop).
+            // No backdrop-sampling blend shader on the GPU path yet (WebGPU has
+            // no framebuffer fetch), so non-Normal layers composite *as Normal*
+            // here — visible rather than skipped. The CPU reference path
+            // (`cpu.rs`) does the real blend via `iris_pixel::blend`.
             // TODO(iris): SPEC.md §4.8 — Phase 4: GPU blend shader matching iris_pixel::blend.
-            tracing::warn!(
+            tracing::trace!(
                 layer_id = ?layer.id,
                 mode = ?layer.blend_mode,
-                "iris-canvas Phase 2: only Normal blend composited; skipping layer"
+                "iris-canvas: GPU path blends as Normal until blend shader lands"
             );
-            continue;
         }
 
         let offset_x = px.canvas_offset_x as f64;

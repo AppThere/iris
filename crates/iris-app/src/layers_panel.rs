@@ -15,6 +15,7 @@ use iris_pixel::{
     TileCache, LINEAR_SRGB,
 };
 
+use crate::layer_properties::LayerProperties;
 use crate::state::{AppState, OpenDocument};
 
 // TODO(iris): move LAYERS_PANEL_WIDTH to appthere_ui layout tokens
@@ -87,6 +88,7 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                     }
                 }
             }
+            LayerProperties { state }
             div {
                 style: "padding: {SPACE_2}px; display: flex; gap: {SPACE_2}px; \
                         border-top: 1px solid {COLOR_BORDER_CHROME};",

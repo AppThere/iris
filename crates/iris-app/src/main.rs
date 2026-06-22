@@ -4,6 +4,7 @@
 mod app;
 mod canvas_area;
 mod home_tab;
+mod layer_properties;
 mod layers_panel;
 mod layout;
 mod ribbon;
