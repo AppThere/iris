@@ -77,12 +77,13 @@ fn read_pixel(pl: &PixelLayer, x: i64, y: i64) -> [f32; 4] {
     let px_x = (lx % ts) as usize;
     let px_y = (ly % ts) as usize;
     let bi = (px_y * TILE_SIZE as usize + px_x) * 8;
-    if bi + 8 > tile.0.len() { return [0.0; 4]; }
+    let b = tile.bytes();
+    if bi + 8 > b.len() { return [0.0; 4]; }
     [
-        f16_to_f32(u16::from_le_bytes([tile.0[bi],   tile.0[bi+1]])),
-        f16_to_f32(u16::from_le_bytes([tile.0[bi+2], tile.0[bi+3]])),
-        f16_to_f32(u16::from_le_bytes([tile.0[bi+4], tile.0[bi+5]])),
-        f16_to_f32(u16::from_le_bytes([tile.0[bi+6], tile.0[bi+7]])),
+        f16_to_f32(u16::from_le_bytes([b[bi],   b[bi+1]])),
+        f16_to_f32(u16::from_le_bytes([b[bi+2], b[bi+3]])),
+        f16_to_f32(u16::from_le_bytes([b[bi+4], b[bi+5]])),
+        f16_to_f32(u16::from_le_bytes([b[bi+6], b[bi+7]])),
     ]
 }
 
@@ -94,22 +95,25 @@ fn write_pixel(pl: &mut PixelLayer, x: i64, y: i64, color: [f32; 4], dirty: &mut
     let coord = TileCoord { tx: (lx / ts) as u32, ty: (ly / ts) as u32 };
     let px_x = (lx % ts) as usize;
     let px_y = (ly % ts) as usize;
-    let mut tile = pl.tiles.get(coord).cloned()
-        .unwrap_or_else(|| TileData::transparent(TILE_SIZE));
+    if pl.tiles.get(coord).is_none() {
+        pl.tiles.insert(coord, TileData::transparent(TILE_SIZE));
+    }
+    let Some(tile) = pl.tiles.get_mut(coord) else { return; };
     let bi = (px_y * TILE_SIZE as usize + px_x) * 8;
-    if bi + 8 > tile.0.len() { return; }
+    // Copy-on-write borrow; deep-copies only when a render snapshot shares it.
+    let b = tile.bytes_mut();
+    if bi + 8 > b.len() { return; }
     // Porter-Duff over (premultiplied)
     let sa = color[3];
     let inv = 1.0 - sa;
-    let dst_r = f16_to_f32(u16::from_le_bytes([tile.0[bi],   tile.0[bi+1]]));
-    let dst_g = f16_to_f32(u16::from_le_bytes([tile.0[bi+2], tile.0[bi+3]]));
-    let dst_b = f16_to_f32(u16::from_le_bytes([tile.0[bi+4], tile.0[bi+5]]));
-    let dst_a = f16_to_f32(u16::from_le_bytes([tile.0[bi+6], tile.0[bi+7]]));
-    tile.0[bi..bi+2].copy_from_slice(&f32_to_f16(color[0]*sa + dst_r*inv).to_le_bytes());
-    tile.0[bi+2..bi+4].copy_from_slice(&f32_to_f16(color[1]*sa + dst_g*inv).to_le_bytes());
-    tile.0[bi+4..bi+6].copy_from_slice(&f32_to_f16(color[2]*sa + dst_b*inv).to_le_bytes());
-    tile.0[bi+6..bi+8].copy_from_slice(&f32_to_f16(sa + dst_a*inv).to_le_bytes());
-    pl.tiles.insert(coord, tile);
+    let dst_r = f16_to_f32(u16::from_le_bytes([b[bi],   b[bi+1]]));
+    let dst_g = f16_to_f32(u16::from_le_bytes([b[bi+2], b[bi+3]]));
+    let dst_b = f16_to_f32(u16::from_le_bytes([b[bi+4], b[bi+5]]));
+    let dst_a = f16_to_f32(u16::from_le_bytes([b[bi+6], b[bi+7]]));
+    b[bi..bi+2].copy_from_slice(&f32_to_f16(color[0]*sa + dst_r*inv).to_le_bytes());
+    b[bi+2..bi+4].copy_from_slice(&f32_to_f16(color[1]*sa + dst_g*inv).to_le_bytes());
+    b[bi+4..bi+6].copy_from_slice(&f32_to_f16(color[2]*sa + dst_b*inv).to_le_bytes());
+    b[bi+6..bi+8].copy_from_slice(&f32_to_f16(sa + dst_a*inv).to_le_bytes());
     dirty.insert(coord);
 }
 

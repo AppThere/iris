@@ -43,7 +43,7 @@ pub fn IrisHomeTab(mut state: Signal<AppState>) -> Element {
             viewport_width_px,
             on_template_select: move |_idx| {
                 let doc = OpenDocument::new_blank(800, 600, "Untitled");
-                state.write().document = Some(doc);
+                state.write().set_document(doc);
                 state.write().active_tab_index = 1;
             },
             on_browse_templates: move |_| {},
@@ -51,7 +51,7 @@ pub fn IrisHomeTab(mut state: Signal<AppState>) -> Element {
             on_open_file: move |_| {
                 // TODO(iris): Phase 3 — wire async file picker with appthere_file_access
                 let doc = OpenDocument::new_blank(800, 600, "Untitled");
-                state.write().document = Some(doc);
+                state.write().set_document(doc);
                 state.write().active_tab_index = 1;
             },
         }

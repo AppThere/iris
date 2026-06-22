@@ -7,6 +7,8 @@ use appthere_ui::tokens::colors::{
 };
 use appthere_ui::tokens::spacing::{RADIUS_SM, SPACE_2, SPACE_3};
 use appthere_ui::tokens::typography::{FONT_SIZE_BODY, FONT_SIZE_LABEL, FONT_WEIGHT_SEMIBOLD};
+use appthere_ui::icons::lucide;
+use appthere_ui::AtIcon;
 use dioxus::prelude::*;
 use iris_pixel::{
     BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, PixelLayer,
@@ -101,7 +103,8 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                             doc.dirty = true;
                         }
                     },
-                    "+"
+                    title: "Add layer",
+                    AtIcon { icon: lucide::PLUS, size: 16.0, color: COLOR_TEXT_ON_CHROME.to_string() }
                 }
                 button {
                     style: "flex: 1; padding: {SPACE_2}px; \
@@ -119,7 +122,8 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                             state.write().selected_layer = None;
                         }
                     },
-                    "−"
+                    title: "Delete selected layer",
+                    AtIcon { icon: lucide::TRASH_2, size: 16.0, color: COLOR_TEXT_ON_CHROME.to_string() }
                 }
                 button {
                     style: "flex: 1; padding: {SPACE_2}px; \
@@ -204,7 +208,9 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                             }
                         });
                     },
-                    "Import"
+                    title: "Import image as layer",
+                    AtIcon { icon: lucide::IMAGE_PLUS, size: 16.0, color: COLOR_TEXT_ON_CHROME.to_string() }
+                    "  Import"
                 }
             }
         }

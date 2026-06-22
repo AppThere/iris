@@ -11,13 +11,15 @@ use uuid::Uuid;
 use crate::{
     document::{AifArtboard, AifCanvas, CanvasMode},
     error::AifError,
+    limits::validate_xml_dimension,
     parts::{AIF_FORMAT_VERSION, AIF_MAJOR, IRIS_EXT_NS, IRIS_NS},
     xml::helpers::{
         local_name, parse_f32, parse_i32, parse_u32, parse_uuid, qualified_name,
         required_attr, xml_escape,
     },
+    xml::layer_meta::{bit_depth_str, parse_bit_depth},
 };
-use iris_pixel::{BitDepth, Layer, LayerContent, LayerTree};
+use iris_pixel::{Layer, LayerContent, LayerTree};
 
 /// A parsed `<iris:Layer>` entry from `document.xml`.
 pub(crate) struct LayerTreeEntry {
@@ -141,10 +143,14 @@ fn parse_canvas(e: &quick_xml::events::BytesStart<'_>, part: &str) -> Result<Aif
             })
         }
     };
+    let width_px = parse_u32(&required_attr(e, "widthPx", part)?, "widthPx", part)?;
+    let height_px = parse_u32(&required_attr(e, "heightPx", part)?, "heightPx", part)?;
+    validate_xml_dimension(width_px, "Canvas widthPx", part)?;
+    validate_xml_dimension(height_px, "Canvas heightPx", part)?;
     Ok(AifCanvas {
         mode,
-        width_px: parse_u32(&required_attr(e, "widthPx", part)?, "widthPx", part)?,
-        height_px: parse_u32(&required_attr(e, "heightPx", part)?, "heightPx", part)?,
+        width_px,
+        height_px,
         dpi_x: parse_f32(&required_attr(e, "dpiX", part)?, "dpiX", part)?,
         dpi_y: parse_f32(&required_attr(e, "dpiY", part)?, "dpiY", part)?,
         working_color_space: required_attr(e, "workingColorSpace", part)?,
@@ -156,13 +162,17 @@ fn parse_artboard(
     e: &quick_xml::events::BytesStart<'_>,
     part: &str,
 ) -> Result<AifArtboard, AifError> {
+    let width_px = parse_u32(&required_attr(e, "widthPx", part)?, "widthPx", part)?;
+    let height_px = parse_u32(&required_attr(e, "heightPx", part)?, "heightPx", part)?;
+    validate_xml_dimension(width_px, "Artboard widthPx", part)?;
+    validate_xml_dimension(height_px, "Artboard heightPx", part)?;
     Ok(AifArtboard {
         id: parse_uuid(&required_attr(e, "id", part)?, part)?,
         name: required_attr(e, "name", part)?,
         x_px: parse_i32(&required_attr(e, "xPx", part)?, "xPx", part)?,
         y_px: parse_i32(&required_attr(e, "yPx", part)?, "yPx", part)?,
-        width_px: parse_u32(&required_attr(e, "widthPx", part)?, "widthPx", part)?,
-        height_px: parse_u32(&required_attr(e, "heightPx", part)?, "heightPx", part)?,
+        width_px,
+        height_px,
     })
 }
 
@@ -194,7 +204,7 @@ pub(crate) fn write_document_xml(
         CanvasMode::Vector => "vector",
         CanvasMode::Mixed => "mixed",
     };
-    let bd = bit_depth_to_str(canvas.bit_depth);
+    let bd = bit_depth_str(canvas.bit_depth);
     let cs = &canvas.working_color_space;
 
     let mut ab_xml = String::new();
@@ -282,17 +292,4 @@ fn layer_type_str(content: &LayerContent) -> &'static str {
     }
 }
 
-fn bit_depth_to_str(bd: BitDepth) -> &'static str {
-    match bd { BitDepth::U8 => "u8", BitDepth::U16 => "u16", BitDepth::F16 => "f16", BitDepth::F32 => "f32" }
-}
-
-fn parse_bit_depth(s: &str, part: &str) -> Result<BitDepth, AifError> {
-    match s {
-        "u8" => Ok(BitDepth::U8),
-        "u16" => Ok(BitDepth::U16),
-        "f16" => Ok(BitDepth::F16),
-        "f32" => Ok(BitDepth::F32),
-        other => Err(AifError::XmlParse { part: part.into(), message: format!("unknown bitDepth '{other}'") }),
-    }
-}
 

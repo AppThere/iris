@@ -72,8 +72,9 @@ pub fn layer_to_rgba8(layer: &Layer) -> Option<LayerPixels> {
                         break;
                     }
                     let ti = (ly as usize * TILE_SIZE as usize + lx as usize) * 8;
+                    let tb = tile.bytes();
                     let chan = |o: usize| -> f32 {
-                        f16::from_bits(u16::from_le_bytes([tile.0[ti + o], tile.0[ti + o + 1]]))
+                        f16::from_bits(u16::from_le_bytes([tb[ti + o], tb[ti + o + 1]]))
                             .to_f32()
                     };
                     let di = (gy as usize * w as usize + gx as usize) * 4;

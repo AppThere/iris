@@ -33,7 +33,7 @@ fn make_tree() -> LayerTree {
             tiles: {
                 let mut cache = TileCache::new(8);
                 // Fill (0,0) with a distinguishable pattern (all bytes = 0x3C = f16 ~= 1.0)
-                let data = TileData(vec![0x3Cu8; (TILE_SIZE as usize).pow(2) * 8].into_boxed_slice());
+                let data = TileData::from_vec(vec![0x3Cu8; (TILE_SIZE as usize).pow(2) * 8]);
                 cache.insert(TileCoord { tx: 0, ty: 0 }, data);
                 cache
             },

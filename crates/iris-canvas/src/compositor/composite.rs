@@ -102,12 +102,23 @@ pub(super) fn tile_params(
     screen_size: (u32, u32),
     opacity: f32,
 ) -> TileParamsGpu {
-    let (width_px, height_px) = screen_size;
     let ts = TILE_SIZE as f64;
     let doc_x0 = offset_x + tx as f64 * ts;
     let doc_y0 = offset_y + ty as f64 * ts;
-    let doc_x1 = doc_x0 + ts;
-    let doc_y1 = doc_y0 + ts;
+    quad_params(vp, doc_x0, doc_y0, doc_x0 + ts, doc_y0 + ts, screen_size, opacity)
+}
+
+/// Compute NDC quad corners for an arbitrary document-space rect.
+pub(super) fn quad_params(
+    vp: &CanvasViewport,
+    doc_x0: f64,
+    doc_y0: f64,
+    doc_x1: f64,
+    doc_y1: f64,
+    screen_size: (u32, u32),
+    opacity: f32,
+) -> TileParamsGpu {
+    let (width_px, height_px) = screen_size;
 
     let tl = vp.doc_to_screen(kurbo::Vec2::new(doc_x0, doc_y0), width_px, height_px);
     let tr = vp.doc_to_screen(kurbo::Vec2::new(doc_x1, doc_y0), width_px, height_px);

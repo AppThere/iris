@@ -37,7 +37,7 @@ pub(crate) fn write_tile_exr(
     tx: u32,
     ty: u32,
 ) -> Result<Vec<u8>, AifError> {
-    let bytes: &[u8] = &data.0;
+    let bytes: &[u8] = data.bytes();
 
     let get_pixel = |exr::prelude::Vec2(x, y): exr::prelude::Vec2<usize>| {
         let base = (y * TILE_W + x) * BPP;
@@ -94,9 +94,23 @@ pub(crate) fn read_tile_exr(
         .no_deep_data()
         .largest_resolution_level()
         .rgba_channels(
-            |_res, _| vec![0u8; TILE_W * TILE_W * BPP],
+            // A tile EXR must be exactly TILE_W × TILE_W. The create-closure
+            // cannot return an error, so other resolutions get an empty
+            // sentinel buffer that is rejected after decoding — without it a
+            // crafted EXR declaring larger dimensions would drive the pixel
+            // writes below out of bounds.
+            |res, _| {
+                if res.width() == TILE_W && res.height() == TILE_W {
+                    vec![0u8; TILE_W * TILE_W * BPP]
+                } else {
+                    Vec::new()
+                }
+            },
             |pixels: &mut Vec<u8>, pos, (r, g, b, a): (f16, f16, f16, f16)| {
                 let base = (pos.y() * TILE_W + pos.x()) * BPP;
+                if base + BPP > pixels.len() {
+                    return; // sentinel: resolution was rejected
+                }
                 let rb = r.to_bits().to_le_bytes();
                 let gb = g.to_bits().to_le_bytes();
                 let bb = b.to_bits().to_le_bytes();
@@ -123,9 +137,19 @@ pub(crate) fn read_tile_exr(
 
     validate_tile_attrs(&image.layer_data.attributes, expected_layer_id, tx, ty)?;
 
-    Ok(TileData(
-        image.layer_data.channel_data.pixels.into_boxed_slice(),
-    ))
+    let pixels = image.layer_data.channel_data.pixels;
+    if pixels.len() != TILE_W * TILE_W * BPP {
+        return Err(AifError::TileReadError {
+            layer_id: expected_layer_id,
+            tx,
+            ty,
+            message: format!(
+                "tile EXR resolution is not {TILE_W}×{TILE_W}"
+            ),
+        });
+    }
+
+    Ok(TileData::from_vec(pixels))
 }
 
 fn validate_tile_attrs(
@@ -182,7 +206,7 @@ mod tests {
                 // else: transparent black (all zeros)
             }
         }
-        TileData(bytes.into_boxed_slice())
+        TileData::from_vec(bytes)
     }
 
     #[test]
@@ -191,8 +215,8 @@ mod tests {
         let original = checkerboard_tile();
         let exr_bytes = write_tile_exr(&original, id, 0, 0).expect("write");
         let recovered = read_tile_exr(&exr_bytes, id, 0, 0).expect("read");
-        assert_eq!(original.0.len(), recovered.0.len());
-        assert_eq!(&*original.0, &*recovered.0);
+        assert_eq!(original.byte_len(), recovered.byte_len());
+        assert_eq!(original.bytes(), recovered.bytes());
     }
 
     #[test]

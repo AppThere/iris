@@ -89,6 +89,13 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     // Blitz paints before the window is interactive).
     let shared_size = use_hook(|| Arc::new(Mutex::new((props.width, props.height))));
 
+    // Frame generation: the paint source skips recompositing while this is
+    // unchanged. The component body only re-runs when the tree or viewport
+    // signals (or size props) actually change, so bumping here is exactly
+    // "something the compositor can see changed".
+    let frame_generation =
+        use_hook(|| Arc::new(std::sync::atomic::AtomicU64::new(0)));
+
     // Sync signal values into shared state on every re-render.
     if let Ok(mut vp) = shared_viewport.try_lock() {
         *vp = props.viewport.read().clone();
@@ -96,6 +103,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
     if let Ok(mut tr) = shared_tree.try_lock() {
         *tr = props.tree.read().clone();
     }
+    frame_generation.fetch_add(1, std::sync::atomic::Ordering::Release);
 
     // Register the paint source with Blitz. `use_wgpu` uses `use_hook_with_cleanup`
     // internally — auto-unregisters when the component is dropped. FnOnce captures
@@ -106,6 +114,7 @@ pub fn IrisCanvas(props: IrisCanvasProps) -> Element {
             shared_viewport.clone(),
             shared_tree.clone(),
             shared_size.clone(),
+            frame_generation.clone(),
         )
     });
 

@@ -67,6 +67,18 @@ impl Package {
         crate::zip::read::read_package_from_zip(&mut reader)
     }
 
+    /// Open a package from a reader with caller-supplied decompression limits.
+    ///
+    /// Identical to [`Package::open`] but lets the caller tighten or relax the
+    /// per-part and whole-package decompressed-size caps that defend against
+    /// ZIP decompression bombs.
+    pub fn open_with_limits(
+        mut reader: impl Read + Seek,
+        limits: &crate::zip::read::ReadLimits,
+    ) -> OpcResult<Self> {
+        crate::zip::read::read_package_from_zip_with_limits(&mut reader, limits)
+    }
+
     /// Open a package from a file path (requires `std` feature).
     #[cfg(feature = "std")]
     pub fn open_path(path: impl AsRef<Path>) -> OpcResult<Self> {

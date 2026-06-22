@@ -15,10 +15,7 @@ pub(super) fn fire_open_document_intent(
     options: &PickOptions,
     _allow_multiple: bool,
 ) -> Result<(), PickerError> {
-    let ctx = ndk_context::android_context();
-    // SAFETY: `ctx.vm()` is a non-null `*mut JavaVM` provided by the Android
-    // runtime via `JNI_OnLoad`. Valid for the process lifetime; not freed here.
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
+    let vm = checked_vm()?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
     let intent = create_intent(&mut env, "android.intent.action.OPEN_DOCUMENT")?;
@@ -27,17 +24,14 @@ pub(super) fn fire_open_document_intent(
         set_intent_type(&mut env, &intent, mime)?;
     }
 
-    start_activity_for_result(&mut env, &ctx, &intent, 1001)
+    start_activity_for_result(&mut env, &intent, 1001)
 }
 
 /// Fire `ACTION_CREATE_DOCUMENT` via JNI.
 pub(super) fn fire_create_document_intent(
     options: &SaveOptions,
 ) -> Result<(), PickerError> {
-    let ctx = ndk_context::android_context();
-    // SAFETY: Same invariant as fire_open_document_intent — `ctx.vm()` is
-    // a valid non-null `*mut JavaVM` for the process lifetime.
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
+    let vm = checked_vm()?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
     let intent = create_intent(&mut env, "android.intent.action.CREATE_DOCUMENT")?;
@@ -65,19 +59,16 @@ pub(super) fn fire_create_document_intent(
         .map_err(|e| platform_err("putExtra", e))?;
     }
 
-    start_activity_for_result(&mut env, &ctx, &intent, 1002)
+    start_activity_for_result(&mut env, &intent, 1002)
 }
 
 /// Call `ContentResolver.takePersistableUriPermission` for a URI.
 pub(super) fn take_persistable_uri_permission(uri: &str) -> Result<(), PickerError> {
-    let ctx = ndk_context::android_context();
-    // SAFETY: Same invariant as fire_open_document_intent — `ctx.vm()` is
-    // a valid non-null `*mut JavaVM` for the process lifetime.
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(jvm_err)?;
+    let vm = checked_vm()?;
     let mut env = vm.attach_current_thread().map_err(attach_err)?;
 
     let uri_obj = parse_uri(&mut env, uri)?;
-    let resolver = get_content_resolver(&mut env, &ctx)?;
+    let resolver = get_content_resolver(&mut env)?;
 
     // FLAG_GRANT_READ_URI_PERMISSION (1) | FLAG_GRANT_WRITE_URI_PERMISSION (2)
     env.call_method(
@@ -94,7 +85,39 @@ pub(super) fn take_persistable_uri_permission(uri: &str) -> Result<(), PickerErr
     Ok(())
 }
 
-// ── Shared helpers ───��──────────────────────────────────────────────────
+// ── Shared helpers ───────────────────────────────────────────────────────
+
+/// Null-checked `JavaVM` from `ndk_context`.
+///
+/// `JavaVM::from_raw` on a null pointer is undefined behaviour, so the raw
+/// pointer is verified before the cast even though a correctly initialised
+/// Android process always provides one via `JNI_OnLoad`.
+pub(in crate::platform) fn checked_vm() -> Result<jni::JavaVM, PickerError> {
+    let ctx = ndk_context::android_context();
+    let ptr = ctx.vm();
+    if ptr.is_null() {
+        return Err(platform_err("JavaVM", "ndk_context returned a null JavaVM pointer"));
+    }
+    // SAFETY: `ptr` is non-null (checked above) and is the process JavaVM
+    // provided via `JNI_OnLoad`; it is valid for the lifetime of the process
+    // and `from_raw` does not assume ownership.
+    unsafe { jni::JavaVM::from_raw(ptr.cast()) }.map_err(jvm_err)
+}
+
+/// Null-checked current-Activity `jobject` from `ndk_context`.
+///
+/// Same rationale as [`checked_vm`]: `JObject::from_raw` on null is UB.
+pub(in crate::platform) fn checked_activity<'a>() -> Result<jni::objects::JObject<'a>, PickerError> {
+    let ctx = ndk_context::android_context();
+    let ptr = ctx.context();
+    if ptr.is_null() {
+        return Err(platform_err("activity", "ndk_context returned a null context pointer"));
+    }
+    // SAFETY: `ptr` is non-null (checked above) and is the current Android
+    // Activity jobject, valid for the lifetime of the activity; `from_raw`
+    // does not assume ownership.
+    Ok(unsafe { jni::objects::JObject::from_raw(ptr.cast()) })
+}
 
 /// Create an `Intent` with the given action string.
 fn create_intent<'a>(
@@ -137,13 +160,10 @@ fn set_intent_type(
 /// Call `startActivityForResult` on the current activity.
 fn start_activity_for_result(
     env: &mut jni::JNIEnv<'_>,
-    ctx: &ndk_context::AndroidContext,
     intent: &jni::objects::JObject<'_>,
     request_code: i32,
 ) -> Result<(), PickerError> {
-    // SAFETY: `ctx.context()` is a non-null `jobject` for the current Android
-    // Activity, valid for the duration of the activity and not freed here.
-    let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+    let activity = checked_activity()?;
     env.call_method(
         &activity,
         "startActivityForResult",
@@ -182,11 +202,8 @@ pub(super) fn parse_uri<'a>(
 /// Get the `ContentResolver` from the activity context.
 pub(super) fn get_content_resolver<'a>(
     env: &mut jni::JNIEnv<'a>,
-    ctx: &ndk_context::AndroidContext,
 ) -> Result<jni::objects::JObject<'a>, PickerError> {
-    // SAFETY: `ctx.context()` is a non-null `jobject` for the current Android
-    // Activity, valid for the duration of the activity and not freed here.
-    let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+    let activity = checked_activity()?;
     env.call_method(
         &activity,
         "getContentResolver",

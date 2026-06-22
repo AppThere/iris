@@ -25,7 +25,7 @@ pub use appthere_canvas::{
 
 // Iris-specific public API
 pub use canvas_widget::IrisCanvas;
-pub use compositor::CompositorError;
+pub use compositor::{composite_rgba8_cpu, Compositor, CompositorError};
 pub use key::TileKey;
 pub use tool_event::{PointerButton, ToolEvent};
 pub use viewport::{CanvasViewport, MAX_ZOOM, MIN_ZOOM};

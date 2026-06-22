@@ -51,6 +51,9 @@ pub fn CanvasArea(mut state: Signal<AppState>) -> Element {
 
     // Sync tree_signal → IrisCanvas when a stroke has painted new tile data.
     // canvas_dirty is set by tool_dispatch after each Down/Move/Up event.
+    // Tile pixel buffers are Arc-shared copy-on-write (see iris_pixel::TileData),
+    // so this clone — and canvas_widget's shared_tree sync — costs O(tiles)
+    // refcount bumps, not a deep copy of pixel data.
     use_effect(move || {
         if state.read().canvas_dirty {
             let new_tree = state

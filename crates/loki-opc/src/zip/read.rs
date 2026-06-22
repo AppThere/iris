@@ -18,16 +18,75 @@ use crate::{
     relationships::{package_relationships_part, parse_relationships_part},
 };
 
-/// Reads packages sequentially organizing files correctly instantiating metadata components generating logic properly resolving variants matching properties enforcing parameters effectively preserving identifiers robustly returning limits cleanly.
+/// Decompressed-size limits applied while reading a package.
+///
+/// ZIP entries can declare a small compressed size yet inflate to many
+/// gigabytes (deflate reaches ~1000:1 on repetitive input). Every entry read
+/// is capped per-part and package-wide so a hostile archive cannot exhaust
+/// memory. The defaults are far above any legitimate OPC payload.
+#[derive(Debug, Clone, Copy)]
+pub struct ReadLimits {
+    /// Maximum decompressed bytes for a single entry.
+    pub max_part_bytes: u64,
+    /// Maximum total decompressed bytes across all entries.
+    pub max_total_bytes: u64,
+}
+
+impl Default for ReadLimits {
+    fn default() -> Self {
+        Self {
+            max_part_bytes: 512 * 1024 * 1024,        // 512 MiB
+            max_total_bytes: 2 * 1024 * 1024 * 1024,  // 2 GiB
+        }
+    }
+}
+
+/// Read a decompressed entry into memory, enforcing `limits`.
+///
+/// `total` accumulates decompressed bytes across the whole package.
+fn read_entry_limited(
+    file: &mut impl Read,
+    entry_name: &str,
+    limits: &ReadLimits,
+    total: &mut u64,
+) -> OpcResult<Vec<u8>> {
+    let mut data = Vec::new();
+    // Read one byte past the limit so an exactly-at-limit entry passes but an
+    // oversized one is detected without decompressing the remainder.
+    file.take(limits.max_part_bytes.saturating_add(1)).read_to_end(&mut data)?;
+    if data.len() as u64 > limits.max_part_bytes {
+        return Err(OpcError::EntryTooLarge {
+            part: entry_name.to_string(),
+            limit: limits.max_part_bytes,
+        });
+    }
+    *total += data.len() as u64;
+    if *total > limits.max_total_bytes {
+        return Err(OpcError::PackageTooLarge { limit: limits.max_total_bytes });
+    }
+    Ok(data)
+}
+
+/// Read an OPC package from a ZIP stream using [`ReadLimits::default`].
 pub fn read_package_from_zip<R: Read + Seek>(reader: &mut R) -> OpcResult<Package> {
+    read_package_from_zip_with_limits(reader, &ReadLimits::default())
+}
+
+/// Read an OPC package from a ZIP stream with caller-supplied size limits.
+pub fn read_package_from_zip_with_limits<R: Read + Seek>(
+    reader: &mut R,
+    limits: &ReadLimits,
+) -> OpcResult<Package> {
     let mut zip = ZipArchive::new(reader).map_err(OpcError::Zip)?;
     let mut pkg = Package::new();
+    let mut total_bytes: u64 = 0;
 
     let ct_index = crate::compat::content_types::find_content_types(&mut zip, &mut pkg.warnings)
         .ok_or(OpcError::MissingContentTypes)?;
 
-    let mut ct_xml = Vec::new();
-    zip.by_index(ct_index)?.read_to_end(&mut ct_xml)?;
+    let mut ct_file = zip.by_index(ct_index)?;
+    let ct_xml = read_entry_limited(&mut ct_file, "[Content_Types].xml", limits, &mut total_bytes)?;
+    drop(ct_file);
 
     let ctm = parse_content_types(&ct_xml, &mut pkg.warnings)?;
     *pkg.content_type_map_mut() = ctm.clone();
@@ -67,8 +126,7 @@ pub fn read_package_from_zip<R: Read + Seek>(reader: &mut R) -> OpcResult<Packag
         // Push to seen names dynamically validating bounds internally resolving uniqueness properly.
         seen_names.push(name.as_str().to_string());
 
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
+        let data = read_entry_limited(&mut file, name.as_str(), limits, &mut total_bytes)?;
 
         let media_type = ctm.resolve(&name).unwrap_or("").to_string();
         if media_type.is_empty() {

@@ -27,8 +27,18 @@ jobs:
           libxi-dev \
           libxrandr-dev \
           libxcursor-dev \
-          libgl1-mesa-dev
+          libgl1-mesa-dev \
+          mesa-vulkan-drivers
     - name: Build
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    # The crates below are excluded from the workspace (see Cargo.toml), so
+    # `cargo test --workspace` never exercises them. Test them explicitly —
+    # loki-opc parses untrusted ZIP input and must not regress silently.
+    - name: Test loki-opc (workspace-excluded)
+      run: cargo test --manifest-path crates/loki-opc/Cargo.toml --verbose
+    - name: Test loki-file-access (workspace-excluded)
+      run: cargo test --manifest-path crates/loki-file-access/Cargo.toml --verbose
+    - name: Test appthere-canvas (workspace-excluded)
+      run: cargo test --manifest-path crates/appthere-canvas/Cargo.toml --verbose

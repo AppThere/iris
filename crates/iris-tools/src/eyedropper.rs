@@ -34,12 +34,13 @@ pub fn sample_color(pos: kurbo::Vec2, tree: &LayerTree) -> [f32; 4] {
 
         let ts_u = TILE_SIZE as usize;
         let bi = (px_y * ts_u + px_x) * 8;
-        if bi + 8 > tile.0.len() { continue; }
+        let b = tile.bytes();
+        if bi + 8 > b.len() { continue; }
 
-        let sr = f16_to_f32(u16::from_le_bytes([tile.0[bi],   tile.0[bi+1]]));
-        let sg = f16_to_f32(u16::from_le_bytes([tile.0[bi+2], tile.0[bi+3]]));
-        let sb = f16_to_f32(u16::from_le_bytes([tile.0[bi+4], tile.0[bi+5]]));
-        let sa = f16_to_f32(u16::from_le_bytes([tile.0[bi+6], tile.0[bi+7]])) * layer.opacity;
+        let sr = f16_to_f32(u16::from_le_bytes([b[bi],   b[bi+1]]));
+        let sg = f16_to_f32(u16::from_le_bytes([b[bi+2], b[bi+3]]));
+        let sb = f16_to_f32(u16::from_le_bytes([b[bi+4], b[bi+5]]));
+        let sa = f16_to_f32(u16::from_le_bytes([b[bi+6], b[bi+7]])) * layer.opacity;
 
         // Porter-Duff over (premultiplied source)
         let inv = 1.0 - sa;
@@ -80,10 +81,11 @@ mod tests {
         let ts = TILE_SIZE as usize;
         let mut tile = TileData::transparent(TILE_SIZE);
         let bi = (py as usize % ts * ts + px as usize % ts) * 8;
-        tile.0[bi..bi+2].copy_from_slice(&rgba_f16[0].to_le_bytes());
-        tile.0[bi+2..bi+4].copy_from_slice(&rgba_f16[1].to_le_bytes());
-        tile.0[bi+4..bi+6].copy_from_slice(&rgba_f16[2].to_le_bytes());
-        tile.0[bi+6..bi+8].copy_from_slice(&rgba_f16[3].to_le_bytes());
+        let b = tile.bytes_mut();
+        b[bi..bi+2].copy_from_slice(&rgba_f16[0].to_le_bytes());
+        b[bi+2..bi+4].copy_from_slice(&rgba_f16[1].to_le_bytes());
+        b[bi+4..bi+6].copy_from_slice(&rgba_f16[2].to_le_bytes());
+        b[bi+6..bi+8].copy_from_slice(&rgba_f16[3].to_le_bytes());
         let mut cache = TileCache::default();
         cache.insert(TileCoord { tx: px / TILE_SIZE, ty: py / TILE_SIZE }, tile);
         let id = uuid::Uuid::new_v4();

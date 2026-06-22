@@ -46,6 +46,16 @@ pub fn import_raster_image(bytes: &[u8], name: &str) -> Result<Layer, AifError> 
         ImageFormat::Exr => decode_exr(bytes)?,
     };
 
+    // Both decoders validate dimensions against crate::limits and return a
+    // buffer of exactly width × height × 8 bytes; re-check here so the
+    // unchecked indexing in the tile loop below is provably in bounds.
+    let expected_len = crate::limits::checked_import_buffer_len(width, height)?;
+    if pixels.len() != expected_len {
+        return Err(AifError::ImportError(
+            "decoded pixel buffer does not match image dimensions".to_string(),
+        ));
+    }
+
     Ok(layer_from_f16_pixels(width, height, &pixels, name))
 }
 
@@ -88,6 +98,7 @@ fn layer_from_f16_pixels(width: u32, height: u32, pixels: &[u8], name: &str) -> 
     for ty in 0..rows {
         for tx in 0..cols {
             let mut tile_data = TileData::transparent(tile_size);
+            let tile_bytes = tile_data.bytes_mut();
 
             for local_y in 0..tile_size {
                 let global_y = ty * tile_size + local_y;
@@ -104,7 +115,7 @@ fn layer_from_f16_pixels(width: u32, height: u32, pixels: &[u8], name: &str) -> 
                     let tile_idx = (local_y as usize * tile_size as usize + local_x as usize) * 8;
 
                     if img_idx + 8 <= pixels.len() {
-                        tile_data.0[tile_idx..tile_idx + 8]
+                        tile_bytes[tile_idx..tile_idx + 8]
                             .copy_from_slice(&pixels[img_idx..img_idx + 8]);
                     }
                 }

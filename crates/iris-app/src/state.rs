@@ -100,6 +100,41 @@ impl Default for AppState {
     }
 }
 
+impl AppState {
+    /// Replace the open document and reset all per-document UI state.
+    ///
+    /// Always use this instead of assigning `self.document` directly:
+    /// `selected_layer`, the marquee selection, and drag state refer to the
+    /// outgoing document and would silently misdirect tool events otherwise.
+    pub fn set_document(&mut self, doc: OpenDocument) {
+        self.selected_layer = doc.tree.root_layer_ids().first().copied();
+        self.selection = Selection::default();
+        self.marquee_start = None;
+        self.canvas_dirty = true;
+        self.document = Some(doc);
+    }
+
+    /// The selected layer id, revalidated against the current document.
+    ///
+    /// A stale id (left over from a previous document or a deleted layer)
+    /// heals to the first root layer so tools act on something visible
+    /// instead of silently doing nothing.
+    pub fn validated_selected_layer(&mut self) -> Option<LayerId> {
+        let doc = self.document.as_ref()?;
+        match self.selected_layer {
+            Some(id) if doc.tree.get(id).is_some() => Some(id),
+            stale => {
+                if let Some(id) = stale {
+                    tracing::warn!(%id, "stale layer selection; selecting first root layer");
+                }
+                let fallback = doc.tree.root_layer_ids().first().copied();
+                self.selected_layer = fallback;
+                fallback
+            }
+        }
+    }
+}
+
 impl OpenDocument {
     pub fn new_blank(width_px: u32, height_px: u32, title: &str) -> Self {
         let mut tree = LayerTree::new(width_px, height_px, 96.0, 96.0);
@@ -143,6 +178,44 @@ impl OpenDocument {
 
     pub fn zoom_percent(&self) -> u32 {
         (self.viewport.zoom * 100.0).round() as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_document_selects_first_root_layer() {
+        let mut state = AppState::default();
+        state.selection.rect = Some(kurbo::Rect::new(0.0, 0.0, 5.0, 5.0));
+        let doc = OpenDocument::new_blank(64, 64, "Next");
+        let expected = doc.tree.root_layer_ids().first().copied();
+        state.set_document(doc);
+        assert_eq!(state.selected_layer, expected);
+        assert!(state.selection.rect.is_none(), "selection must reset");
+        assert!(state.marquee_start.is_none(), "drag state must reset");
+    }
+
+    #[test]
+    fn validated_selected_layer_heals_stale_id() {
+        let mut state = AppState::default();
+        state.selected_layer = Some(uuid::Uuid::new_v4()); // not in the tree
+        let healed = state.validated_selected_layer();
+        let first_root = state
+            .document
+            .as_ref()
+            .and_then(|d| d.tree.root_layer_ids().first().copied());
+        assert_eq!(healed, first_root);
+        assert_eq!(state.selected_layer, first_root, "state must be rewritten");
+    }
+
+    #[test]
+    fn validated_selected_layer_keeps_valid_id() {
+        let mut state = AppState::default();
+        let valid = state.selected_layer;
+        assert!(valid.is_some(), "default state selects a layer");
+        assert_eq!(state.validated_selected_layer(), valid);
     }
 }
 

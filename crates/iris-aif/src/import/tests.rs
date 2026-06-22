@@ -129,3 +129,36 @@ fn test_import_invalid() {
     let err = import_raster_image(&[0, 1, 2, 3], "Invalid").unwrap_err();
     assert!(matches!(err, crate::error::AifError::ImportError(_)));
 }
+
+#[test]
+fn test_import_exr_over_dimension_limit_is_rejected() {
+    // 70 000 px exceeds MAX_IMPORT_DIMENSION per side but stays cheap to
+    // encode (140 000 pixels total). Without the limit, the decoder would
+    // allocate from the header-declared dimensions unchecked.
+    let exr = write_image_exr(70_000, 2);
+    let err = import_raster_image(&exr, "Huge EXR").unwrap_err();
+    assert!(
+        matches!(err, crate::error::AifError::ImportError(_)),
+        "expected ImportError, got {err:?}"
+    );
+}
+
+#[test]
+fn test_import_png_over_dimension_limit_is_rejected() {
+    let png = make_dummy_image(70_000, 2, image::ImageFormat::Png);
+    let err = import_raster_image(&png, "Huge PNG").unwrap_err();
+    assert!(
+        matches!(err, crate::error::AifError::ImportError(_)),
+        "expected ImportError, got {err:?}"
+    );
+}
+
+#[test]
+fn test_import_at_limit_dimension_error_names_limit() {
+    let exr = write_image_exr(70_000, 2);
+    let err = import_raster_image(&exr, "Huge EXR").unwrap_err();
+    assert!(
+        err.to_string().contains(&crate::limits::MAX_IMPORT_DIMENSION.to_string()),
+        "error should name the limit: {err}"
+    );
+}
