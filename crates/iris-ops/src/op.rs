@@ -116,9 +116,11 @@ pub struct TileCoord {
 }
 
 /// Identifies which scalar property of a layer changed in a [`LayerOp::SetProp`].
-// TODO(iris): SPEC.md §3 — add `BlendMode` variant once the type-ownership
-// question from audit §6.2 is resolved (BlendMode is currently owned by
-// iris-pixel, which depends on iris-ops, not the reverse).
+//
+// Type-ownership note (was audit §6.2): `BlendMode` is owned by `iris-pixel`,
+// which depends on `iris-ops`, so `iris-ops` cannot name it. It is carried as
+// its AIF string identifier in [`PropValue::Str`] (the same encoding used by the
+// `.aif` format), which keeps `iris-ops` free of any `iris-pixel` dependency.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayerProp {
     /// The layer's display name (`Layer.name: String`).
@@ -129,13 +131,15 @@ pub enum LayerProp {
     Locked,
     /// Compositing opacity in the range 0.0–1.0 (`Layer.opacity: f32`).
     Opacity,
+    /// The layer's blend mode, carried as its AIF string id in
+    /// [`PropValue::Str`] (e.g. `"multiply"`); see the type-ownership note above.
+    BlendMode,
 }
 
 /// A typed scalar value paired with a [`LayerProp`] in a [`LayerOp::SetProp`].
-// TODO(iris): SPEC.md §3 — add a `BlendMode` variant once audit §6.2 is resolved.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropValue {
-    /// A string value (e.g. layer name).
+    /// A string value (e.g. layer name, or a blend mode's AIF identifier).
     Str(String),
     /// A boolean value (e.g. `visible`, `locked`).
     Bool(bool),

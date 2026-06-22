@@ -7,10 +7,10 @@
 //! (`<input type=range>`, `<select>`), so these are button-driven: opacity is a
 //! ±10% stepper and the blend mode is a button that expands a list of all 27
 //! modes (SPEC.md §4.8).
-//
-// TODO(iris): SPEC.md §3 — record opacity/blend changes on an UndoStack once
-// AppState owns one (gap-audit quick win #3). Today they mutate the layer
-// directly, matching the visibility/lock toggles in layers_panel.rs.
+//!
+//! Edits are recorded as undoable `SetProp` ops via
+//! [`OpenDocument::set_layer_prop`], so they participate in the document's
+//! undo/redo history (see [`crate::history_bar`]).
 
 use appthere_ui::tokens::colors::{
     COLOR_ACCENT_PRIMARY, COLOR_BORDER_CHROME, COLOR_SURFACE_1, COLOR_SURFACE_2,
@@ -19,7 +19,7 @@ use appthere_ui::tokens::colors::{
 use appthere_ui::tokens::spacing::{RADIUS_SM, SPACE_2, SPACE_3};
 use appthere_ui::tokens::typography::{FONT_SIZE_BODY, FONT_SIZE_LABEL, FONT_WEIGHT_SEMIBOLD};
 use dioxus::prelude::*;
-use iris_pixel::BlendMode;
+use iris_pixel::{BlendMode, LayerProp, PropValue};
 
 use crate::state::AppState;
 
@@ -67,16 +67,14 @@ fn blend_label(mode: BlendMode) -> &'static str {
         .unwrap_or("Normal")
 }
 
-/// Mutate the selected layer's `opacity`/`blend_mode` and flag the canvas dirty
-/// so the compositor re-renders (mirrors the layers-panel visibility toggle).
-fn apply<F: FnOnce(&mut iris_pixel::Layer)>(mut state: Signal<AppState>, f: F) {
+/// Set a property on the selected layer through the document's undo-tracked
+/// [`crate::state::OpenDocument::set_layer_prop`], then flag the canvas dirty so
+/// the compositor re-renders.
+fn set_prop(mut state: Signal<AppState>, prop: LayerProp, value: PropValue) {
     let id = state.read().selected_layer;
     if let Some(id) = id {
         if let Some(doc) = state.write().document.as_mut() {
-            if let Some(layer) = doc.tree.get_mut(id) {
-                f(layer);
-                doc.dirty = true;
-            }
+            doc.set_layer_prop(id, prop, value);
         }
         state.write().canvas_dirty = true;
     }
@@ -121,9 +119,11 @@ pub fn LayerProperties(mut state: Signal<AppState>) -> Element {
                 button {
                     style: "{step_style}",
                     title: "Decrease opacity",
-                    onclick: move |_| apply(state, |l| {
-                        l.opacity = (l.opacity - OPACITY_STEP).clamp(0.0, 1.0);
-                    }),
+                    onclick: move |_| set_prop(
+                        state,
+                        LayerProp::Opacity,
+                        PropValue::Float((opacity - OPACITY_STEP).clamp(0.0, 1.0)),
+                    ),
                     "−"
                 }
                 span {
@@ -134,9 +134,11 @@ pub fn LayerProperties(mut state: Signal<AppState>) -> Element {
                 button {
                     style: "{step_style}",
                     title: "Increase opacity",
-                    onclick: move |_| apply(state, |l| {
-                        l.opacity = (l.opacity + OPACITY_STEP).clamp(0.0, 1.0);
-                    }),
+                    onclick: move |_| set_prop(
+                        state,
+                        LayerProp::Opacity,
+                        PropValue::Float((opacity + OPACITY_STEP).clamp(0.0, 1.0)),
+                    ),
                     "+"
                 }
             }
@@ -169,7 +171,11 @@ pub fn LayerProperties(mut state: Signal<AppState>) -> Element {
                                          border: none; cursor: pointer; font-size: {FONT_SIZE_BODY}px;")
                             },
                             onclick: move |_| {
-                                apply(state, move |l| l.blend_mode = mode);
+                                set_prop(
+                                    state,
+                                    LayerProp::BlendMode,
+                                    PropValue::Str(mode.to_aif_str().to_string()),
+                                );
                                 expanded.set(false);
                             },
                             "{label}"

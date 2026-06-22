@@ -15,6 +15,7 @@ path = "src/main.rs"
 appthere-ui        = { workspace = true }
 iris-canvas        = { workspace = true }
 iris-pixel         = { workspace = true }
+iris-ops           = { workspace = true }
 iris-tools         = { workspace = true }
 iris-aif           = { workspace = true }
 iris-psd           = { workspace = true }

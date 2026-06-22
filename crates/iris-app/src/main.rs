@@ -3,6 +3,7 @@
 
 mod app;
 mod canvas_area;
+mod history_bar;
 mod home_tab;
 mod layer_properties;
 mod layers_panel;

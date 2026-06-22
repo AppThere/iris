@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use crate::layer::{Layer, LayerId};
 
+mod apply;
 mod ops;
 
 /// Internal: where a layer is attached in the tree.

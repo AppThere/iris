@@ -3337,6 +3337,7 @@ dependencies = [
  "dioxus",
  "iris-aif",
  "iris-canvas",
+ "iris-ops",
  "iris-ora",
  "iris-pixel",
  "iris-psd",

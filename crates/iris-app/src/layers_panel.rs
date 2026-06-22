@@ -11,10 +11,11 @@ use appthere_ui::icons::lucide;
 use appthere_ui::AtIcon;
 use dioxus::prelude::*;
 use iris_pixel::{
-    BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, PixelLayer,
-    TileCache, LINEAR_SRGB,
+    BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, LayerProp,
+    PixelLayer, PropValue, TileCache, LINEAR_SRGB,
 };
 
+use crate::history_bar::HistoryBar;
 use crate::layer_properties::LayerProperties;
 use crate::state::{AppState, OpenDocument};
 
@@ -55,6 +56,7 @@ pub fn LayersPanel(mut state: Signal<AppState>) -> Element {
                         border-bottom: 1px solid {COLOR_BORDER_CHROME};",
                 "Layers"
             }
+            HistoryBar { state }
             div {
                 style: "flex: 1; overflow-y: auto;",
                 {
@@ -240,12 +242,12 @@ fn LayerRow(
                         font-size: {FONT_SIZE_LABEL}px; padding: 0;",
                 onclick: move |evt| {
                     evt.stop_propagation();
+                    // Routed through the undo-tracked setter (visibility is now
+                    // undoable, and this flags canvas_dirty so the change shows).
                     if let Some(doc) = state.write().document.as_mut() {
-                        if let Some(layer) = doc.tree.get_mut(layer_id) {
-                            layer.visible = !layer.visible;
-                            doc.dirty = true;
-                        }
+                        doc.set_layer_prop(layer_id, LayerProp::Visible, PropValue::Bool(!visible));
                     }
+                    state.write().canvas_dirty = true;
                 },
                 if visible { "●" } else { "○" }
             }

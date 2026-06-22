@@ -13,7 +13,7 @@ use crate::op::Op;
 /// see ADR/004-crdt-op-log.md.
 // TODO(iris): ADR/004-crdt-op-log.md — Phase 5: wrap the undo deque in a LoroDoc
 // so ops are persisted to ops.bin and available for collaborative sync.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UndoStack {
     undo: VecDeque<Op>,
     redo: VecDeque<Op>,

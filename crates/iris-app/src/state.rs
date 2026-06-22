@@ -3,11 +3,15 @@
 
 use appthere_ui::Platform;
 use iris_canvas::CanvasViewport;
+use iris_ops::{LayerOp, LayerProp, Op, PropValue, UndoStack};
 use iris_pixel::{
     BitDepth, BlendMode, ChannelLayout, ExrCompression, Layer, LayerContent, LayerId, LayerTree,
     PixelLayer, TileCache, LINEAR_SRGB,
 };
 use iris_tools::{BrushEngine, BrushSettings, EraserEngine};
+
+/// Per-document undo depth (ADR-004 specifies a UI default of 200).
+const UNDO_DEPTH: usize = 200;
 
 /// Which pixel sub-tool is active within [`ToolMode::Pixel`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,6 +75,8 @@ pub struct OpenDocument {
     pub tree: LayerTree,
     pub viewport: CanvasViewport,
     pub dirty: bool,
+    /// Undo/redo history for this document (layer-property edits today).
+    pub undo: UndoStack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,7 +168,10 @@ impl OpenDocument {
             .expect("new_blank: adding initial layer to empty tree cannot fail");
         let mut viewport = CanvasViewport::new();
         viewport.pan = kurbo::Vec2::new(width_px as f64 / 2.0, height_px as f64 / 2.0);
-        Self { title: title.to_string(), path: None, tree, viewport, dirty: false }
+        Self {
+            title: title.to_string(), path: None, tree, viewport, dirty: false,
+            undo: UndoStack::new(UNDO_DEPTH),
+        }
     }
 
     /// Build a document from a parsed [`iris_aif::AifDocument`], as produced by
@@ -173,51 +182,71 @@ impl OpenDocument {
         let mut viewport = CanvasViewport::new();
         viewport.pan =
             kurbo::Vec2::new(tree.canvas_width as f64 / 2.0, tree.canvas_height as f64 / 2.0);
-        Self { title: title.to_string(), path: None, tree, viewport, dirty: false }
+        Self {
+            title: title.to_string(), path: None, tree, viewport, dirty: false,
+            undo: UndoStack::new(UNDO_DEPTH),
+        }
     }
 
     pub fn zoom_percent(&self) -> u32 {
         (self.viewport.zoom * 100.0).round() as u32
     }
+
+    /// Set a scalar layer property and record an undoable op. No-op when the
+    /// layer is gone or the value is unchanged (avoids empty history entries).
+    pub fn set_layer_prop(&mut self, id: LayerId, prop: LayerProp, after: PropValue) {
+        let Some(before) = self.tree.layer_prop(id, &prop) else {
+            return;
+        };
+        if before == after {
+            return;
+        }
+        if self.tree.set_layer_prop(id, &prop, &after).is_ok() {
+            self.undo
+                .push(Op::Layer(LayerOp::SetProp { layer_id: id, prop, before, after }));
+            self.dirty = true;
+        }
+    }
+
+    /// Undo the most recent recorded op. Returns `true` if the tree changed.
+    pub fn undo(&mut self) -> bool {
+        match self.undo.undo() {
+            Some(op) => {
+                self.apply_op(&op, false);
+                self.dirty = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Redo the most recently undone op. Returns `true` if the tree changed.
+    pub fn redo(&mut self) -> bool {
+        match self.undo.redo() {
+            Some(op) => {
+                self.apply_op(&op, true);
+                self.dirty = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Apply a recorded op in the given direction (`redo` → `after`, else
+    /// `before`). Today the app only records `SetProp`; structural and tile
+    /// undo are deferred.
+    // TODO(iris): SPEC.md §3 — record/replay Add/Remove/Move and Tile ops too.
+    fn apply_op(&mut self, op: &Op, redo: bool) {
+        if let Op::Layer(LayerOp::SetProp { layer_id, prop, before, after }) = op {
+            let value = if redo { after } else { before };
+            let _ = self.tree.set_layer_prop(*layer_id, prop, value);
+        }
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn set_document_selects_first_root_layer() {
-        let mut state = AppState::default();
-        state.selection.rect = Some(kurbo::Rect::new(0.0, 0.0, 5.0, 5.0));
-        let doc = OpenDocument::new_blank(64, 64, "Next");
-        let expected = doc.tree.root_layer_ids().first().copied();
-        state.set_document(doc);
-        assert_eq!(state.selected_layer, expected);
-        assert!(state.selection.rect.is_none(), "selection must reset");
-        assert!(state.marquee_start.is_none(), "drag state must reset");
-    }
-
-    #[test]
-    fn validated_selected_layer_heals_stale_id() {
-        let mut state = AppState::default();
-        state.selected_layer = Some(uuid::Uuid::new_v4()); // not in the tree
-        let healed = state.validated_selected_layer();
-        let first_root = state
-            .document
-            .as_ref()
-            .and_then(|d| d.tree.root_layer_ids().first().copied());
-        assert_eq!(healed, first_root);
-        assert_eq!(state.selected_layer, first_root, "state must be rewritten");
-    }
-
-    #[test]
-    fn validated_selected_layer_keeps_valid_id() {
-        let mut state = AppState::default();
-        let valid = state.selected_layer;
-        assert!(valid.is_some(), "default state selects a layer");
-        assert_eq!(state.validated_selected_layer(), valid);
-    }
-}
+#[path = "state_tests.rs"]
+mod state_tests;
 
 pub fn detect_platform() -> Platform {
     if cfg!(target_os = "macos") {
