@@ -112,6 +112,20 @@ fn round_trips_group_hierarchy() {
 }
 
 #[test]
+fn round_trips_document_resolution() {
+    // The writer reads dpi from the layer tree; build one at 150 dpi.
+    let mut tree = LayerTree::new(2, 2, 150.0, 150.0);
+    tree.add_layer(None, 0, layer_from_rgba8(2, 2, &swatch(), "Layer 1")).expect("add");
+
+    let bytes = PsdWriter::to_bytes(&document(tree)).expect("write PSD");
+    let back = PsdReader::from_bytes(&bytes).expect("read PSD back");
+
+    assert!((back.canvas.dpi_x - 150.0).abs() < 1e-3, "dpi_x {}", back.canvas.dpi_x);
+    assert!((back.canvas.dpi_y - 150.0).abs() < 1e-3, "dpi_y {}", back.canvas.dpi_y);
+    assert!((back.layers.dpi_x - 150.0).abs() < 1e-3, "tree dpi_x {}", back.layers.dpi_x);
+}
+
+#[test]
 fn rejects_oversized_canvas() {
     let tree = LayerTree::new(40_000, 8, 72.0, 72.0);
     assert!(matches!(

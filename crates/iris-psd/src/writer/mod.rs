@@ -61,8 +61,10 @@ impl PsdWriter {
 
         let mut buf = file_header(w, h);
         be32(&mut buf, 0); // color mode data section (empty)
-        be32(&mut buf, 0); // image resources section (empty)
-        // TODO(iris): SPEC.md §4.4 — emit a ResolutionInfo (0x03ED) resource.
+        // Image resources: a single ResolutionInfo (0x03ED) block carrying dpi.
+        let resources = crate::resources::resolution_resource(doc.layers.dpi_x, doc.layers.dpi_y);
+        be32(&mut buf, resources.len() as u32);
+        buf.extend_from_slice(&resources);
 
         records::write_layer_and_mask_section(&mut buf, &doc.layers);
 

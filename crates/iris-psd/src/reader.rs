@@ -40,7 +40,9 @@ impl PsdReader {
     pub fn from_bytes(bytes: &[u8]) -> Result<AifDocument, PsdError> {
         validate_header(bytes)?;
         let psd = parse(bytes)?;
-        psd_to_document(&psd)
+        // Photoshop's screen default is 72 dpi when no ResolutionInfo is present.
+        let dpi = crate::resources::read_resolution(bytes).unwrap_or((72.0, 72.0));
+        psd_to_document(&psd, dpi)
     }
 }
 

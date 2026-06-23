@@ -12,17 +12,15 @@ use uuid::Uuid;
 
 use crate::error::PsdError;
 
-// COMPAT(adobe): Photoshop stores resolution in an image-resource block
-// (id 0x03ED). The `psd` crate does not surface it as a typed value, so until
-// that block is parsed we assume Photoshop's 72 dpi screen default.
-// TODO(iris): SPEC.md §4.4 — read ResolutionInfo (0x03ED) for true dpi.
-const DEFAULT_DPI: f32 = 72.0;
+// COMPAT(adobe): Photoshop stores resolution in a ResolutionInfo image-resource
+// block (id 0x03ED) which the `psd` crate does not surface; the reader parses it
+// (see crate::resources) and passes the result in as `dpi`.
 
-/// Build an [`AifDocument`] from a parsed PSD.
+/// Build an [`AifDocument`] from a parsed PSD and its `(dpi_x, dpi_y)`.
 ///
 /// Layers are imported as RGBA f16 pixel layers in the Iris linear working
 /// space, with group nesting and stacking order preserved.
-pub(crate) fn psd_to_document(psd: &Psd) -> Result<AifDocument, PsdError> {
+pub(crate) fn psd_to_document(psd: &Psd, dpi: (f32, f32)) -> Result<AifDocument, PsdError> {
     require_supported_color_mode(psd.color_mode())?;
 
     let width = psd.width();
@@ -32,8 +30,8 @@ pub(crate) fn psd_to_document(psd: &Psd) -> Result<AifDocument, PsdError> {
         mode: CanvasMode::Pixel,
         width_px: width,
         height_px: height,
-        dpi_x: DEFAULT_DPI,
-        dpi_y: DEFAULT_DPI,
+        dpi_x: dpi.0,
+        dpi_y: dpi.1,
         working_color_space: "linear-srgb".to_string(),
         bit_depth: BitDepth::F16,
     };
@@ -47,7 +45,7 @@ pub(crate) fn psd_to_document(psd: &Psd) -> Result<AifDocument, PsdError> {
         height_px: height,
     }];
 
-    let mut tree = LayerTree::new(width, height, DEFAULT_DPI, DEFAULT_DPI);
+    let mut tree = LayerTree::new(width, height, dpi.0, dpi.1);
     crate::layers::populate_tree(psd, &mut tree, width, height);
 
     Ok(AifDocument {

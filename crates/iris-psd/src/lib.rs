@@ -24,6 +24,7 @@ mod convert;
 mod error;
 mod layers;
 mod reader;
+mod resources;
 mod writer;
 
 pub use error::PsdError;
