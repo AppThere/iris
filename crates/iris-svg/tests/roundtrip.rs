@@ -159,6 +159,20 @@ fn round_trips_linear_gradient_fill() {
 }
 
 #[test]
+fn reads_rounded_rect_corners() {
+    let svg = r##"<svg width="100" height="60">
+        <rect x="0" y="0" width="100" height="60" rx="10" ry="8" fill="#888888"/>
+    </svg>"##;
+    let doc = SvgReader::from_str(svg).expect("parse");
+    let obj = &only_vector(&doc).objects[0];
+    // Rounded corners introduce curve segments; a sharp rect would have none.
+    assert!(
+        obj.path.elements().iter().any(|e| matches!(e, kurbo::PathEl::CurveTo(..))),
+        "rounded rect should produce curves"
+    );
+}
+
+#[test]
 fn reads_object_bounding_box_gradient_from_defs() {
     // Default gradientUnits=objectBoundingBox: x1=0%..x2=100% map across the
     // rect's bounds (x 10..90).
