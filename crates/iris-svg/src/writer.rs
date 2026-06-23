@@ -11,6 +11,7 @@ use iris_vector::{Paint, PathObject};
 
 use crate::color::to_hex;
 use crate::error::SvgError;
+use crate::grad_write::GradientRegistry;
 use crate::{base64, transform};
 
 /// Stateless writer that serialises an [`AifDocument`] to SVG 1.1.
@@ -27,22 +28,37 @@ impl SvgWriter {
     pub fn to_string(doc: &AifDocument) -> Result<String, SvgError> {
         let tree = &doc.layers;
         let (w, h) = (tree.canvas_width, tree.canvas_height);
+        // Emit the body first so gradient paints register into `defs`, then
+        // assemble header + <defs> + body (id references resolve regardless of
+        // document order).
+        let mut reg = GradientRegistry::default();
+        let mut body = String::new();
+        // SVG draws first-to-last; the layer tree is top-first, so emit reversed.
+        for id in tree.root_layer_ids().iter().rev() {
+            emit_layer(tree, *id, 1, &mut body, &mut reg)?;
+        }
         let mut out = String::new();
         out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         out.push_str(&format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" \
              width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">\n"
         ));
-        // SVG draws first-to-last; the layer tree is top-first, so emit reversed.
-        for id in tree.root_layer_ids().iter().rev() {
-            emit_layer(tree, *id, 1, &mut out)?;
+        if let Some(defs) = reg.defs_block() {
+            out.push_str(&defs);
         }
+        out.push_str(&body);
         out.push_str("</svg>\n");
         Ok(out)
     }
 }
 
-fn emit_layer(tree: &LayerTree, id: LayerId, depth: usize, out: &mut String) -> Result<(), SvgError> {
+fn emit_layer(
+    tree: &LayerTree,
+    id: LayerId,
+    depth: usize,
+    out: &mut String,
+    reg: &mut GradientRegistry,
+) -> Result<(), SvgError> {
     let Some(layer) = tree.get(id) else {
         return Ok(());
     };
@@ -50,7 +66,7 @@ fn emit_layer(tree: &LayerTree, id: LayerId, depth: usize, out: &mut String) -> 
     match &layer.content {
         LayerContent::Vector(vl) => {
             for obj in &vl.objects {
-                emit_path(obj, &pad, out);
+                emit_path(obj, &pad, out, reg);
             }
         }
         LayerContent::Pixel(_) => {
@@ -67,7 +83,7 @@ fn emit_layer(tree: &LayerTree, id: LayerId, depth: usize, out: &mut String) -> 
         LayerContent::Group { children } => {
             out.push_str(&format!("{pad}<g>\n"));
             for child in children.iter().rev() {
-                emit_layer(tree, *child, depth + 1, out)?;
+                emit_layer(tree, *child, depth + 1, out, reg)?;
             }
             out.push_str(&format!("{pad}</g>\n"));
         }
@@ -78,7 +94,7 @@ fn emit_layer(tree: &LayerTree, id: LayerId, depth: usize, out: &mut String) -> 
     Ok(())
 }
 
-fn emit_path(obj: &PathObject, pad: &str, out: &mut String) {
+fn emit_path(obj: &PathObject, pad: &str, out: &mut String, reg: &mut GradientRegistry) {
     let mut attrs = String::new();
     if !obj.name.is_empty() {
         attrs.push_str(&format!(" id=\"{}\"", escape(&obj.name)));
@@ -86,37 +102,46 @@ fn emit_path(obj: &PathObject, pad: &str, out: &mut String) {
     if let Some(t) = transform::to_svg(obj.transform) {
         attrs.push_str(&format!(" transform=\"{t}\""));
     }
-    attrs.push_str(&fill_attrs(obj));
-    attrs.push_str(&stroke_attrs(obj));
+    attrs.push_str(&fill_attrs(obj, reg));
+    attrs.push_str(&stroke_attrs(obj, reg));
     if matches!(obj.fill_rule, iris_vector::FillRule::EvenOdd) {
         attrs.push_str(" fill-rule=\"evenodd\"");
     }
     out.push_str(&format!("{pad}<path d=\"{}\"{}/>\n", obj.path.to_svg(), attrs));
 }
 
-fn fill_attrs(obj: &PathObject) -> String {
+fn fill_attrs(obj: &PathObject, reg: &mut GradientRegistry) -> String {
     match &obj.fill {
         None => " fill=\"none\"".to_string(),
-        Some(paint) => {
-            let c = solid_of(paint);
-            let mut s = format!(" fill=\"{}\"", to_hex(c));
-            if c.a < 1.0 {
-                s.push_str(&format!(" fill-opacity=\"{}\"", c.a));
+        Some(paint) => match reg.register(paint) {
+            Some(id) => format!(" fill=\"url(#{id})\""),
+            None => {
+                let c = solid_of(paint);
+                let mut s = format!(" fill=\"{}\"", to_hex(c));
+                if c.a < 1.0 {
+                    s.push_str(&format!(" fill-opacity=\"{}\"", c.a));
+                }
+                s
             }
-            s
-        }
+        },
     }
 }
 
-fn stroke_attrs(obj: &PathObject) -> String {
+fn stroke_attrs(obj: &PathObject, reg: &mut GradientRegistry) -> String {
     let Some(st) = &obj.stroke else {
         return String::new();
     };
-    let c = solid_of(&st.paint);
-    let mut s = format!(" stroke=\"{}\" stroke-width=\"{}\"", to_hex(c), st.width);
-    if c.a < 1.0 {
-        s.push_str(&format!(" stroke-opacity=\"{}\"", c.a));
-    }
+    let mut s = match reg.register(&st.paint) {
+        Some(id) => format!(" stroke=\"url(#{id})\" stroke-width=\"{}\"", st.width),
+        None => {
+            let c = solid_of(&st.paint);
+            let mut t = format!(" stroke=\"{}\" stroke-width=\"{}\"", to_hex(c), st.width);
+            if c.a < 1.0 {
+                t.push_str(&format!(" stroke-opacity=\"{}\"", c.a));
+            }
+            t
+        }
+    };
     match st.cap {
         iris_vector::LineCap::Round => s.push_str(" stroke-linecap=\"round\""),
         iris_vector::LineCap::Square => s.push_str(" stroke-linecap=\"square\""),
@@ -134,8 +159,9 @@ fn stroke_attrs(obj: &PathObject) -> String {
     s
 }
 
-/// Reduce a paint to a representative solid colour. Gradients fall back to their
-/// first stop until gradient export is implemented.
+/// Reduce a paint to a representative solid colour. Gradients are normally
+/// emitted as `<defs>` (see [`GradientRegistry`]); this first-stop fallback only
+/// applies if a gradient ever reaches the solid path.
 fn solid_of(paint: &Paint) -> iris_vector::Color {
     match paint {
         Paint::Solid(c) => *c,

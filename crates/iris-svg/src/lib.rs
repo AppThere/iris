@@ -9,9 +9,10 @@
 //! serialises one back: vector objects to `<path>` elements and raster layers
 //! to base64-encoded `<image>` elements.
 //!
-//! Phase 1 covers paths and basic shapes, groups, transforms, solid
-//! fills/strokes, and embedded raster images. Gradients, text, filters, clip
-//! paths, masks, and patterns are deferred (see `crates/iris-svg/BRIEF.md`).
+//! Covers paths and basic shapes, groups, transforms, solid fills/strokes,
+//! linear/radial gradients (`url(#…)` paint servers, round-tripped via a
+//! `<defs>` block), and embedded raster images. Text, filters, clip paths,
+//! masks, and patterns are deferred (see `crates/iris-svg/BRIEF.md`).
 //!
 //! ```ignore
 //! use iris_svg::{SvgReader, SvgWriter};
@@ -26,6 +27,8 @@ mod attrs;
 mod base64;
 mod color;
 mod error;
+mod grad_write;
+mod gradient;
 mod reader;
 mod shapes;
 mod style;

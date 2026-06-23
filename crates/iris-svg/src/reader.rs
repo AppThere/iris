@@ -3,17 +3,20 @@
 
 //! [`SvgReader`] — import an SVG 1.1 document into an [`AifDocument`].
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use iris_aif::{import_raster_image, AifArtboard, AifCanvas, AifDocument, CanvasMode};
 use iris_pixel::{BlendMode, Layer, LayerContent, LayerTree, VectorLayer};
 use iris_vector::{Affine, PathObject};
+use kurbo::Shape;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use uuid::Uuid;
 
 use crate::attrs::{self, f64_of, str_of, Attrs};
 use crate::error::SvgError;
+use crate::gradient::{self, GradKind, GradientDef};
 use crate::{shapes, style, transform};
 
 /// Stateless reader that imports an SVG document into Iris's native model.
@@ -43,6 +46,11 @@ struct Parser {
     defs_depth: u32,
     objects: Vec<PathObject>,
     raster: Vec<Layer>,
+    /// Gradient definitions by id, collected from `<linearGradient>` /
+    /// `<radialGradient>` (usually inside `<defs>`).
+    gradients: BTreeMap<String, GradientDef>,
+    /// Id of the gradient currently receiving `<stop>` children, if any.
+    cur_grad: Option<String>,
 }
 
 impl Parser {
@@ -55,6 +63,8 @@ impl Parser {
             defs_depth: 0,
             objects: Vec::new(),
             raster: Vec::new(),
+            gradients: BTreeMap::new(),
+            cur_grad: None,
         }
     }
 
@@ -77,11 +87,20 @@ impl Parser {
 
     fn start(&mut self, e: &BytesStart) {
         let tag = e.local_name().as_ref().to_vec();
-        if self.defs_depth > 0 || tag == b"defs" {
-            if tag == b"defs" {
+        // Gradient elements are parsed wherever they appear (normally inside
+        // <defs>), so they are matched before the defs-skip below.
+        match tag.as_slice() {
+            b"linearGradient" => return self.begin_gradient(GradKind::Linear, e),
+            b"radialGradient" => return self.begin_gradient(GradKind::Radial, e),
+            b"stop" => return self.add_stop(e),
+            b"defs" => {
                 self.defs_depth += 1;
+                return;
             }
-            return;
+            _ => {}
+        }
+        if self.defs_depth > 0 {
+            return; // skip other <defs> content (clipPath, pattern, mask, …)
         }
         let own = attrs::collect(e);
         match tag.as_slice() {
@@ -101,6 +120,10 @@ impl Parser {
     }
 
     fn end(&mut self, tag: &[u8]) {
+        if tag == b"linearGradient" || tag == b"radialGradient" {
+            self.cur_grad = None;
+            return;
+        }
         if tag == b"defs" {
             self.defs_depth = self.defs_depth.saturating_sub(1);
             return;
@@ -111,6 +134,32 @@ impl Parser {
             }
             if self.style.len() > 1 {
                 self.style.pop();
+            }
+        }
+    }
+
+    /// Begin a gradient definition, registering it by `id` and making it the
+    /// target for subsequent `<stop>` children.
+    fn begin_gradient(&mut self, kind: GradKind, e: &BytesStart) {
+        let a = attrs::collect(e);
+        match a.get("id") {
+            Some(id) => {
+                let id = id.clone();
+                self.gradients.insert(id.clone(), GradientDef { kind, attrs: a, stops: Vec::new() });
+                self.cur_grad = Some(id);
+            }
+            None => self.cur_grad = None, // unreferenceable without an id
+        }
+    }
+
+    /// Add a `<stop>` to the gradient currently being parsed.
+    fn add_stop(&mut self, e: &BytesStart) {
+        let Some(id) = self.cur_grad.clone() else {
+            return;
+        };
+        if let Some(stop) = gradient::parse_stop(&attrs::collect(e)) {
+            if let Some(def) = self.gradients.get_mut(&id) {
+                def.stops.push(stop);
             }
         }
     }
@@ -144,11 +193,22 @@ impl Parser {
     fn add_shape(&mut self, path: iris_vector::BezPath, own: &Attrs) {
         let eff = style::merge(self.cur_style(), own);
         let xf = self.cur_ctm() * transform::parse(own.get("transform").map(String::as_str).unwrap_or(""));
+        // objectBoundingBox gradients need the path's bounds in object space.
+        let bbox = path.bounding_box();
+        let fill = match str_of(&eff, "fill") {
+            Some(v) if is_url(v) => gradient::resolve(&self.gradients, v, bbox, style::opacity(&eff, "fill-opacity")),
+            _ => style::fill(&eff),
+        };
+        let stroke = match str_of(&eff, "stroke") {
+            Some(v) if is_url(v) => gradient::resolve(&self.gradients, v, bbox, style::opacity(&eff, "stroke-opacity"))
+                .map(|p| style::stroke_geom(&eff, p)),
+            _ => style::stroke(&eff),
+        };
         self.objects.push(PathObject {
             id: Uuid::new_v4(),
             path,
-            fill: style::fill(&eff),
-            stroke: style::stroke(&eff),
+            fill,
+            stroke,
             fill_rule: style::fill_rule(&eff),
             transform: xf,
             name: str_of(own, "id").unwrap_or_default().to_string(),
@@ -226,4 +286,9 @@ impl Parser {
             format_version: (1, 0),
         })
     }
+}
+
+/// Whether a paint value is a `url(#…)` paint-server reference.
+fn is_url(v: &str) -> bool {
+    v.trim_start().starts_with("url(")
 }

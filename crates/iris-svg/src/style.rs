@@ -27,33 +27,39 @@ pub(crate) fn merge(parent: &Attrs, own: &Attrs) -> Attrs {
     out
 }
 
-fn opacity(s: &Attrs, key: &str) -> f32 {
+/// Combined element + property opacity (e.g. `opacity` × `fill-opacity`),
+/// clamped to `0.0..=1.0`. Used by the gradient resolver for the outer alpha.
+pub(crate) fn opacity(s: &Attrs, key: &str) -> f32 {
     let elem = f64_of(s, "opacity").unwrap_or(1.0) as f32;
     let specific = f64_of(s, key).unwrap_or(1.0) as f32;
     (elem * specific).clamp(0.0, 1.0)
 }
 
-/// Resolve the fill paint. SVG's initial fill is opaque black; `fill="none"`
-/// and unsupported paint servers (e.g. `url(#…)`) yield no fill.
+/// Resolve a solid fill paint. SVG's initial fill is opaque black; `fill="none"`
+/// yields no fill. Paint-server fills (`url(#…)`) are resolved separately by the
+/// reader against the gradient table (see `gradient.rs`), not here.
 pub(crate) fn fill(s: &Attrs) -> Option<Paint> {
     let alpha = opacity(s, "fill-opacity");
     match str_of(s, "fill") {
         None => Some(Paint::Solid(with_alpha(Color::BLACK, alpha))),
-        Some(v) if v.starts_with("url(") => {
-            // TODO(iris): SPEC.md §5.4 — resolve gradient/pattern paint servers.
-            tracing::warn!(paint = v, "SVG paint server not yet supported; leaving unfilled");
-            None
-        }
+        Some(v) if v.trim_start().starts_with("url(") => None,
         Some(v) => parse_color(v).map(|c| Paint::Solid(with_alpha(c, alpha))),
     }
 }
 
-/// Resolve the stroke. SVG's initial stroke is none.
+/// Resolve a solid stroke. SVG's initial stroke is none. Paint-server strokes
+/// are handled by the reader via [`stroke_geom`].
 pub(crate) fn stroke(s: &Attrs) -> Option<StrokePaint> {
     let color = parse_color(str_of(s, "stroke")?)?;
     let alpha = opacity(s, "stroke-opacity");
-    Some(StrokePaint {
-        paint: Paint::Solid(with_alpha(color, alpha)),
+    Some(stroke_geom(s, Paint::Solid(with_alpha(color, alpha))))
+}
+
+/// Build stroke geometry (width, caps, joins, dashes) around an explicit
+/// `paint`. Lets the reader attach a resolved gradient paint to a stroke.
+pub(crate) fn stroke_geom(s: &Attrs, paint: Paint) -> StrokePaint {
+    StrokePaint {
+        paint,
         width: f64_of(s, "stroke-width").unwrap_or(1.0),
         cap: match str_of(s, "stroke-linecap") {
             Some("round") => LineCap::Round,
@@ -68,7 +74,7 @@ pub(crate) fn stroke(s: &Attrs) -> Option<StrokePaint> {
         miter_limit: f64_of(s, "stroke-miterlimit").unwrap_or(4.0),
         dash_array: dash_array(s),
         dash_offset: f64_of(s, "stroke-dashoffset").unwrap_or(0.0),
-    })
+    }
 }
 
 /// Resolve the fill rule (`nonzero` default, or `evenodd`).

@@ -5,7 +5,10 @@
 
 use iris_aif::{layer_from_rgba8, layer_to_rgba8, AifArtboard, AifCanvas, AifDocument, CanvasMode};
 use iris_pixel::{BitDepth, BlendMode, Layer, LayerContent, LayerTree, VectorLayer};
-use iris_vector::{Affine, BezPath, Color, FillRule, Paint, PathObject, Point, StrokePaint};
+use iris_vector::{
+    Affine, BezPath, Color, ColorStop, FillRule, LinearGradient, Paint, PathObject, Point,
+    SpreadMode, StrokePaint,
+};
 use iris_svg::{SvgReader, SvgWriter};
 
 fn vector_layer(objects: Vec<PathObject>) -> Layer {
@@ -112,6 +115,71 @@ fn round_trips_vector_paths() {
     assert_eq!(st.paint, Paint::Solid(Color::from_rgb8(0, 0, 255)));
     // M + L + L + Z = 4 path elements.
     assert_eq!(o.path.elements().len(), 4);
+}
+
+#[test]
+fn round_trips_linear_gradient_fill() {
+    let grad = LinearGradient {
+        start: Point::new(0.0, 0.0),
+        end: Point::new(100.0, 0.0),
+        stops: vec![
+            ColorStop { offset: 0.0, color: Color::from_rgb8(255, 0, 0) },
+            ColorStop { offset: 1.0, color: Color::from_rgb8(0, 0, 255) },
+        ],
+        spread: SpreadMode::Pad,
+    };
+    let obj = PathObject {
+        id: uuid::Uuid::new_v4(),
+        path: BezPath::from_svg("M0 0 L100 0 L100 100 Z").expect("path"),
+        fill: Some(Paint::Linear(grad)),
+        stroke: None,
+        fill_rule: FillRule::NonZero,
+        transform: Affine::IDENTITY,
+        name: String::new(),
+        visible: true,
+    };
+    let mut tree = LayerTree::new(100, 100, 96.0, 96.0);
+    tree.add_layer(None, 0, vector_layer(vec![obj])).expect("add");
+
+    let svg = SvgWriter::to_string(&document(tree, CanvasMode::Vector)).expect("write");
+    assert!(svg.contains("<linearGradient"), "emits a <defs> gradient: {svg}");
+    assert!(svg.contains("fill=\"url(#"), "fill references the gradient");
+
+    let back = SvgReader::from_str(&svg).expect("read back");
+    match &only_vector(&back).objects[0].fill {
+        Some(Paint::Linear(g)) => {
+            assert_eq!(g.start, Point::new(0.0, 0.0));
+            assert_eq!(g.end, Point::new(100.0, 0.0));
+            assert_eq!(g.stops.len(), 2);
+            assert_eq!(g.stops[0].color, Color::from_rgb8(255, 0, 0));
+            assert_eq!(g.stops[1].color, Color::from_rgb8(0, 0, 255));
+        }
+        other => panic!("expected linear gradient, got {other:?}"),
+    }
+}
+
+#[test]
+fn reads_object_bounding_box_gradient_from_defs() {
+    // Default gradientUnits=objectBoundingBox: x1=0%..x2=100% map across the
+    // rect's bounds (x 10..90).
+    let svg = r##"<svg width="100" height="100">
+        <defs>
+          <linearGradient id="g">
+            <stop offset="0" stop-color="#ff0000"/>
+            <stop offset="1" stop-color="#0000ff"/>
+          </linearGradient>
+        </defs>
+        <rect x="10" y="20" width="80" height="60" fill="url(#g)"/>
+    </svg>"##;
+    let doc = SvgReader::from_str(svg).expect("parse");
+    match &only_vector(&doc).objects[0].fill {
+        Some(Paint::Linear(g)) => {
+            assert_eq!(g.start.x, 10.0);
+            assert_eq!(g.end.x, 90.0);
+            assert_eq!(g.stops.len(), 2);
+        }
+        other => panic!("expected linear gradient, got {other:?}"),
+    }
 }
 
 #[test]
