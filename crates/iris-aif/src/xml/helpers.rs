@@ -6,10 +6,64 @@
 //! All helpers convert quick-xml types to Rust primitives, mapping
 //! parse errors to [`AifError::XmlParse`] or [`AifError::MissingAttribute`].
 
-use quick_xml::events::BytesStart;
+use quick_xml::events::{BytesRef, BytesStart, BytesText, Event};
 use uuid::Uuid;
 
 use crate::error::AifError;
+
+// ── Text content extraction ───────────────────────────────────────────────────
+
+/// Decodes and XML-entity-unescapes a text node's content.
+///
+/// `BytesText::unescape()` was removed in quick-xml 0.41 (COMPAT: split into
+/// separate `decode()` + `escape::unescape()` steps); this restores the old
+/// combined behaviour.
+pub(crate) fn unescape_text(text: &BytesText<'_>, part: &str) -> Result<String, AifError> {
+    let to_err = |e: quick_xml::Error| AifError::XmlParse {
+        part: part.into(),
+        message: e.to_string(),
+    };
+    let decoded = text
+        .decode()
+        .map_err(quick_xml::Error::from)
+        .map_err(to_err)?;
+    quick_xml::escape::unescape(&decoded)
+        .map(|s| s.into_owned())
+        .map_err(quick_xml::Error::from)
+        .map_err(to_err)
+}
+
+/// Resolves a `&entity;` / `&#N;` general reference to its literal string.
+///
+/// COMPAT(quick-xml-0.41): entity/character refs no longer fold into the
+/// surrounding `Event::Text`; they arrive as their own `Event::GeneralRef`
+/// (verified: `&amp;` splits a run into Text, `GeneralRef`, Text, and is
+/// dropped if unhandled) — every text loop here must match both. Named refs
+/// resolve via the 5 predefined XML entities; anything else falls back to the
+/// literal `&name;`, so nothing is silently lost.
+pub(crate) fn resolve_general_ref(r: &BytesRef<'_>, part: &str) -> Result<String, AifError> {
+    let to_err = |e: quick_xml::Error| AifError::XmlParse {
+        part: part.into(),
+        message: e.to_string(),
+    };
+    if let Some(ch) = r.resolve_char_ref().map_err(to_err)? {
+        return Ok(ch.to_string());
+    }
+    let name = r.decode().map_err(quick_xml::Error::from).map_err(to_err)?;
+    Ok(quick_xml::escape::resolve_predefined_entity(&name)
+        .map_or_else(|| format!("&{name};"), ToString::to_string))
+}
+
+/// Extracts text from an `Event::Text` or `Event::GeneralRef`; empty string
+/// for any other event kind. One-call replacement for the `unescape_text`/
+/// `resolve_general_ref` pair, for call sites matching both in a single arm.
+pub(crate) fn event_text(event: &Event<'_>, part: &str) -> Result<String, AifError> {
+    match event {
+        Event::Text(t) => unescape_text(t, part),
+        Event::GeneralRef(r) => resolve_general_ref(r, part),
+        _ => Ok(String::new()),
+    }
+}
 
 // ── Attribute extraction ──────────────────────────────────────────────────────
 
@@ -30,10 +84,12 @@ pub(crate) fn required_attr(
         let local = attr.key.local_name();
         let key = std::str::from_utf8(local.as_ref()).unwrap_or("");
         if key == name {
-            let val = attr.unescape_value().map_err(|err| AifError::XmlParse {
-                part: part.into(),
-                message: err.to_string(),
-            })?;
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(|err| AifError::XmlParse {
+                    part: part.into(),
+                    message: err.to_string(),
+                })?;
             return Ok(val.into_owned());
         }
     }
@@ -57,10 +113,12 @@ pub(crate) fn optional_attr(
         let local = attr.key.local_name();
         let key = std::str::from_utf8(local.as_ref()).unwrap_or("");
         if key == name {
-            let val = attr.unescape_value().map_err(|err| AifError::XmlParse {
-                part: part.into(),
-                message: err.to_string(),
-            })?;
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(|err| AifError::XmlParse {
+                    part: part.into(),
+                    message: err.to_string(),
+                })?;
             return Ok(Some(val.into_owned()));
         }
     }

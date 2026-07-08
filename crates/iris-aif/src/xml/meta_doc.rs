@@ -8,12 +8,12 @@
 //! `<iris:Session>` entry appended (do not read–modify–write; the reader
 //! returns an empty struct when the part is absent).
 
-use quick_xml::{events::Event, Reader};
+use quick_xml::{Reader, events::Event};
 
 use crate::{
     error::AifError,
     parts::{IRIS_EXT_NS, IRIS_NS},
-    xml::helpers::local_name,
+    xml::helpers::{event_text, local_name},
 };
 
 /// Decoded contents of `iris/metadata.xml`.
@@ -56,10 +56,16 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
     }
     let part = crate::parts::METADATA_XML;
     let mut reader = Reader::from_reader(bytes);
-    reader.config_mut().trim_text(true);
+    // COMPAT(quick-xml-0.41): `trim_text(true)` trims each individual
+    // `Event::Text` fragment, and an `&entity;` now splits one run into
+    // several such fragments — trimming per-fragment would strip whitespace
+    // adjacent to the entity (e.g. "Alice &amp; Bob" -> "Alice&Bob"). Read
+    // untrimmed and trim the fully-accumulated string once, below.
+    reader.config_mut().trim_text(false);
 
     let mut meta = DocumentMetadata::default();
     let mut current_tag: Option<String> = None;
+    let mut current_text = String::new();
 
     loop {
         match reader.read_event() {
@@ -67,21 +73,24 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
                 return Err(AifError::XmlParse {
                     part: part.into(),
                     message: e.to_string(),
-                })
+                });
             }
             Ok(Event::Eof) => break,
             Ok(Event::Start(ref e)) => {
                 current_tag = Some(local_name(e));
+                current_text.clear();
             }
-            Ok(Event::Text(ref t)) => {
-                let text = t
-                    .unescape()
-                    .map_err(|e| AifError::XmlParse {
-                        part: part.into(),
-                        message: e.to_string(),
-                    })?
-                    .into_owned();
-                if !text.trim().is_empty() {
+            Ok(ref ev @ (Event::Text(_) | Event::GeneralRef(_))) => {
+                // A tag's content can arrive as several Text/GeneralRef
+                // fragments (e.g. an `&amp;` splits the run) — accumulate
+                // rather than overwrite, or only the last fragment survives.
+                current_text.push_str(&event_text(ev, part)?);
+            }
+            Ok(Event::End(_)) => {
+                let text = std::mem::take(&mut current_text);
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    let text = trimmed.to_string();
                     match current_tag.as_deref() {
                         Some("Title") => meta.title = Some(text),
                         Some("Author") => meta.author = Some(text),
@@ -90,8 +99,6 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
                         _ => {}
                     }
                 }
-            }
-            Ok(Event::End(_)) => {
                 current_tag = None;
             }
             Ok(_) => {}
@@ -168,5 +175,21 @@ mod tests {
     fn empty_bytes_returns_default() {
         let meta = read_metadata_xml(&[]).unwrap();
         assert!(meta.title.is_none());
+    }
+
+    #[test]
+    fn entity_reference_mid_run_is_not_dropped() {
+        // Regression test: quick-xml 0.41 reports an `&amp;` as its own
+        // `Event::GeneralRef` between two `Event::Text` fragments rather than
+        // folding it into a single Text event. A reader that only matches
+        // `Event::Text` silently drops the entity and any Text fragment after
+        // it if the code overwrites instead of accumulating.
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+<iris:Metadata xmlns:iris="urn:iris" xmlns:x="urn:iris-ext">
+  <iris:Author>Alice &amp; Bob</iris:Author>
+</iris:Metadata>
+"#;
+        let meta = read_metadata_xml(xml).unwrap();
+        assert_eq!(meta.author.as_deref(), Some("Alice & Bob"));
     }
 }

@@ -185,6 +185,48 @@ Until gates are open, these crates exist as stubs only (`lib.rs` with a `// TODO
 
 ---
 
+## Known tech debt — residual vulnerable transitive `quick-xml` copies (2026-07-08)
+
+This workspace's own `quick-xml` usage (`iris-aif`, `iris-ora`, `iris-svg`, and the
+vendored `crates/loki-opc`) is on `0.41.0`, patched against RUSTSEC-2026-0194
+(quadratic-time duplicate-attribute check) and RUSTSEC-2026-0195 (unbounded
+namespace-allocation DoS). `cargo audit` still reports both advisories against two
+*other*, transitively-pulled `quick-xml` copies this workspace does not control —
+each pinned by an intermediate crate's own manifest to a range that doesn't yet
+reach `0.41` (both come in through the `dioxus`/`blitz-shell` desktop stack):
+
+| Locked version | Pulled in by | Actual exposure |
+|---|---|---|
+| `0.39.4` | `wayland-scanner` → `smithay-client-toolkit` → `winit` → `dioxus-native` → `dioxus` | Build-time codegen only: generates Rust bindings from the (trusted, locally-vendored) Wayland protocol XML. Not exposed to untrusted runtime input. |
+| `0.30.0` | `zbus_xml` → `zbus-lockstep` → `atspi` → `accesskit_unix` → `accesskit_winit` → `blitz-shell` → `dioxus-native` | Parses AT-SPI/D-Bus introspection XML on the local session bus (Linux accessibility stack) — local IPC, not attacker-controlled document content. |
+
+Neither is fixable by bumping our own `Cargo.toml` requirements — each is gated
+behind an upstream crate release that hasn't caught up to `quick-xml` 0.41 yet.
+Re-run `cargo audit` (or `cargo tree -i quick-xml`) periodically and bump whichever
+dependent picks up the fix first. Loki (the sibling word-processor repo, sharing
+much of this same desktop/dioxus stack) tracks the identical residual — see its
+CLAUDE.md for the parallel entry.
+
+### `quick-xml` 0.41 reader migration notes (for anyone touching XML parsing here)
+
+- `BytesText::unescape()` and `Attribute::unescape_value()` were removed/deprecated;
+  use the `unescape_text()` / `resolve_general_ref()` / `event_text()` helpers in
+  `iris-aif/src/xml/helpers.rs` instead of calling quick-xml's raw decode methods.
+- **`Event::GeneralRef` is new and easy to miss.** quick-xml 0.41 stopped folding
+  `&entity;` / `&#N;` references into the surrounding `Event::Text` — they now
+  arrive as their own event between Text fragments. Any reader loop that matches
+  `Event::Text` but not `Event::GeneralRef` will silently drop every entity
+  reference from imported text (this is exactly the bug `entity_reference_mid_run_is_not_dropped`
+  in `xml/meta_doc.rs` guards against). Match both, and accumulate fragments
+  rather than overwrite — a tag's content can now legitimately arrive as several
+  events.
+- **`trim_text(true)` becomes lossy once a run can split.** It trims each
+  individual `Event::Text` fragment, so `"Alice &amp; Bob"` — now three events —
+  loses the whitespace on both sides of the entity. Read with `trim_text(false)`
+  and trim the fully-accumulated string once at the end instead.
+
+---
+
 ## What Claude Code must never do
 
 - **Never modify `SPEC.md` or any `ADR/*.md`** during an implement pass. If the spec
