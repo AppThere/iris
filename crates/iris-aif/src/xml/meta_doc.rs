@@ -8,7 +8,7 @@
 //! `<iris:Session>` entry appended (do not read–modify–write; the reader
 //! returns an empty struct when the part is absent).
 
-use quick_xml::{events::Event, Reader};
+use quick_xml::{escape::resolve_predefined_entity, events::Event, Reader};
 
 use crate::{
     error::AifError,
@@ -56,10 +56,19 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
     }
     let part = crate::parts::METADATA_XML;
     let mut reader = Reader::from_reader(bytes);
-    reader.config_mut().trim_text(true);
+    // Not `trim_text(true)`: the reader trims per Text *fragment*, but an
+    // entity reference (`&amp;`) now splits one tag's content across several
+    // Text/GeneralRef events (quick-xml >= 0.38), so fragment-level trimming
+    // would eat whitespace adjacent to the entity. `current_text` is cleared
+    // on every `Start`, which already discards inter-tag whitespace.
 
     let mut meta = DocumentMetadata::default();
     let mut current_tag: Option<String> = None;
+    // quick-xml >= 0.38 streams entity references (`&amp;`, `&#38;`, ...) as
+    // separate `Event::GeneralRef` events instead of leaving them escaped
+    // inside `Event::Text`, so a tag's content must be accumulated across
+    // however many Text/GeneralRef events the reader emits for it.
+    let mut current_text = String::new();
 
     loop {
         match reader.read_event() {
@@ -72,16 +81,40 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
             Ok(Event::Eof) => break,
             Ok(Event::Start(ref e)) => {
                 current_tag = Some(local_name(e));
+                current_text.clear();
             }
             Ok(Event::Text(ref t)) => {
-                let text = t
-                    .unescape()
-                    .map_err(|e| AifError::XmlParse {
+                let text = t.decode().map_err(|e| AifError::XmlParse {
+                    part: part.into(),
+                    message: e.to_string(),
+                })?;
+                current_text.push_str(&text);
+            }
+            Ok(Event::GeneralRef(ref r)) => {
+                if let Some(c) = r.resolve_char_ref().map_err(|e| AifError::XmlParse {
+                    part: part.into(),
+                    message: e.to_string(),
+                })? {
+                    current_text.push(c);
+                } else {
+                    let name = r.decode().map_err(|e| AifError::XmlParse {
                         part: part.into(),
                         message: e.to_string(),
-                    })?
-                    .into_owned();
-                if !text.trim().is_empty() {
+                    })?;
+                    match resolve_predefined_entity(&name) {
+                        Some(resolved) => current_text.push_str(resolved),
+                        None => {
+                            return Err(AifError::XmlParse {
+                                part: part.into(),
+                                message: format!("unknown entity reference '&{name};'"),
+                            })
+                        }
+                    }
+                }
+            }
+            Ok(Event::End(_)) => {
+                if !current_text.trim().is_empty() {
+                    let text = std::mem::take(&mut current_text);
                     match current_tag.as_deref() {
                         Some("Title") => meta.title = Some(text),
                         Some("Author") => meta.author = Some(text),
@@ -90,9 +123,8 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
                         _ => {}
                     }
                 }
-            }
-            Ok(Event::End(_)) => {
                 current_tag = None;
+                current_text.clear();
             }
             Ok(_) => {}
         }
@@ -168,5 +200,29 @@ mod tests {
     fn empty_bytes_returns_default() {
         let meta = read_metadata_xml(&[]).unwrap();
         assert!(meta.title.is_none());
+    }
+
+    #[test]
+    fn entity_and_char_references_split_across_events_are_reassembled() {
+        // quick-xml >= 0.38 streams `&amp;`/`&#38;` as a separate
+        // `Event::GeneralRef` between two `Event::Text` events rather than
+        // leaving them escaped inside one Text event.
+        let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+            <iris:Metadata xmlns:iris=\"urn:iris\">\n\
+            \x20\x20<iris:Title>Fish &amp; Chips &#38; Co</iris:Title>\n\
+            \x20\x20<iris:Author>A &lt;B&gt; C</iris:Author>\n\
+            </iris:Metadata>\n";
+        let meta = read_metadata_xml(xml).unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Fish & Chips & Co"));
+        assert_eq!(meta.author.as_deref(), Some("A <B> C"));
+    }
+
+    #[test]
+    fn unknown_entity_reference_is_an_error() {
+        let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+            <iris:Metadata xmlns:iris=\"urn:iris\">\n\
+            \x20\x20<iris:Title>&custom;</iris:Title>\n\
+            </iris:Metadata>\n";
+        assert!(read_metadata_xml(xml).is_err());
     }
 }
