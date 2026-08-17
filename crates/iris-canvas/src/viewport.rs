@@ -84,6 +84,19 @@ impl CanvasViewport {
         center + rotated
     }
 
+    /// The document → screen mapping as an [`kurbo::Affine`].
+    ///
+    /// Equivalent to [`doc_to_screen`][Self::doc_to_screen] applied to a point,
+    /// but composable — vector rasterisation needs to fold the viewport into a
+    /// path's own transform rather than mapping points one at a time.
+    pub fn doc_to_screen_affine(&self, sw: u32, sh: u32) -> kurbo::Affine {
+        let center = kurbo::Vec2::new(sw as f64 * 0.5, sh as f64 * 0.5);
+        kurbo::Affine::translate(center)
+            * kurbo::Affine::rotate(self.rotation as f64)
+            * kurbo::Affine::scale(self.zoom as f64)
+            * kurbo::Affine::translate(-self.pan)
+    }
+
     /// Axis-aligned bounding box in document space covering all visible screen pixels.
     ///
     /// At rotation = 0 this is a tight rect. At rotation ≠ 0 it is the AABB of
@@ -217,5 +230,32 @@ mod tests {
             approx_eq(anchor_doc_before, anchor_doc_after),
             "anchor moved: before={anchor_doc_before:?} after={anchor_doc_after:?}"
         );
+    }
+
+    #[test]
+    fn affine_matches_pointwise_doc_to_screen() {
+        // The rasteriser folds the viewport into a path transform via the affine
+        // form; it must agree exactly with the pointwise mapping the pixel path
+        // uses, or vector and raster layers would drift apart on screen.
+        for (zoom, rotation) in [(1.0, 0.0), (2.5, 0.0), (1.0, 0.7), (0.4, -1.3)] {
+            let vp = CanvasViewport {
+                pan: kurbo::Vec2::new(37.0, -12.0),
+                zoom,
+                rotation,
+            };
+            let a = vp.doc_to_screen_affine(SW, SH);
+            for doc in [
+                kurbo::Vec2::new(0.0, 0.0),
+                kurbo::Vec2::new(100.0, 250.0),
+                kurbo::Vec2::new(-64.0, 33.5),
+            ] {
+                let expected = vp.doc_to_screen(doc, SW, SH);
+                let got = a * kurbo::Point::new(doc.x, doc.y);
+                assert!(
+                    (got.x - expected.x).abs() < 1e-9 && (got.y - expected.y).abs() < 1e-9,
+                    "affine {got:?} != pointwise {expected:?} at zoom={zoom} rot={rotation}"
+                );
+            }
+        }
     }
 }

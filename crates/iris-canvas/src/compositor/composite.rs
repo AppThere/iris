@@ -33,7 +33,10 @@ pub(super) fn run(
             continue;
         }
         let LayerContent::Pixel(ref px) = layer.content else {
-            // TODO(iris): SPEC.md §6.2 — Phase 3+: vector/text layer compositing
+            // Vector layers are rasterised by the live CPU path (`crate::vector`).
+            // TODO(iris): SPEC.md §6.2 — this GPU path needs an equivalent before
+            // it can replace `Compositor::composite_to_texture`; text is unhandled
+            // in both paths.
             tracing::warn!(
                 layer_id = ?layer.id,
                 "iris-canvas Phase 2: non-pixel layer skipped in compositor"

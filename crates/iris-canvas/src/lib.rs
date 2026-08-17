@@ -14,6 +14,7 @@ pub mod tool_event;
 pub(crate) mod compositor;
 pub(crate) mod paint_bridge;
 pub mod viewport;
+pub(crate) mod vector;
 
 // TODO(iris): SPEC.md §6.2 — Phase 2: overlay pass (selection, guides, artboards)
 // pub mod overlay;
