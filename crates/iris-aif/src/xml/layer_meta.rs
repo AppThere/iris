@@ -36,6 +36,8 @@ pub(crate) struct LayerMetaSpec {
 #[derive(Debug)]
 pub(crate) enum LayerContentSpec {
     Pixel(PixelDataSpec),
+    /// `type="vector"` — geometry lives in `paths.bin` (§4.10), not in meta.xml.
+    Vector,
     Group,
     /// Per §4.16 rule 4: unknown type treated as Group with a warning.
     // The String is the original type name logged via tracing::warn! during parse.
@@ -156,6 +158,7 @@ fn parse_layer_meta_root(
             canvas_offset_y: 0,
             crop_bounds: None,
         }),
+        "vector" => LayerContentSpec::Vector,
         "group" => LayerContentSpec::Group,
         other => {
             // §4.16 rule 4: unknown type → treat as group, warn.

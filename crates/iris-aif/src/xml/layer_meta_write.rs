@@ -16,7 +16,7 @@ use crate::{
     },
 };
 use iris_pixel::{
-    ColorSpaceId, CropBounds, Layer, LayerContent, PixelLayer, TileCache, LINEAR_SRGB,
+    ColorSpaceId, CropBounds, Layer, LayerContent, PixelLayer, TileCache, VectorLayer, LINEAR_SRGB,
 };
 
 // ── Write ─────────────────────────────────────────────────────────────────────
@@ -89,6 +89,9 @@ pub(crate) fn layer_from_spec(spec: LayerMetaSpec) -> Layer {
         LayerContentSpec::Pixel(px) => {
             LayerContent::Pixel(pixel_layer_from_spec(&px))
         }
+        // Geometry is loaded separately from `paths.bin` by the reader (§4.10);
+        // meta.xml carries no vector payload of its own.
+        LayerContentSpec::Vector => LayerContent::Vector(VectorLayer::default()),
         LayerContentSpec::Group | LayerContentSpec::UnknownFallback(_) => {
             LayerContent::Group { children: Vec::new() }
         }

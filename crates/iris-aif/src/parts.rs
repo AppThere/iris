@@ -51,6 +51,13 @@ pub fn layer_meta_xml(layer_id: &uuid::Uuid) -> String {
     format!("iris/layers/{layer_id}/meta.xml")
 }
 
+/// Returns the part URI for a vector layer's FlatBuffers path store (§4.10).
+///
+/// Example: `iris/layers/3f2a1b4c-8d9e-4f0a-b1c2-d3e4f5a6b7c8/paths.bin`
+pub fn layer_paths_bin(layer_id: &uuid::Uuid) -> String {
+    format!("iris/layers/{layer_id}/paths.bin")
+}
+
 /// Returns the part URI for a single EXR tile.
 ///
 /// Tile coordinates are zero-padded to six digits per §4.3.

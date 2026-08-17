@@ -20,6 +20,7 @@ use crate::{
     error::AifError,
     meta::serialise_layer_meta,
     parts,
+    paths::write_path_store,
     preview::write_preview_png,
     tile::write_tile_exr,
     xml::{write_document_xml, write_metadata_xml, DocumentMetadata, SessionInfo},
@@ -95,10 +96,15 @@ fn build_package(doc: &AifDocument, opts: &WriteOptions) -> Result<Package, AifE
 
     // Register content-type defaults for all non-XML extensions used in AIF
     // so that loki-opc's strict reader can resolve them from [Content_Types].xml.
+    // §4.14: `.bin` defaults to octet-stream and `ops.bin` carries an Override.
+    // Both `history/ops.bin` and each layer's `paths.bin` share the extension,
+    // so the op-log media type cannot be the extension default.
     let ctm = pkg.content_type_map_mut();
     ctm.add_default("exr", parts::CT_EXR);
     ctm.add_default("png", parts::CT_PNG);
-    ctm.add_default("bin", parts::CT_OPLOG);
+    ctm.add_default("bin", parts::CT_BIN);
+    let ops_name = PartName::new(format!("/{}", parts::HISTORY_OPS_BIN)).map_err(AifError::Opc)?;
+    pkg.content_type_map_mut().add_override(&ops_name, parts::CT_OPLOG);
 
     add_document_xml(&mut pkg, doc, opts)?;
     add_metadata_xml(&mut pkg)?;
@@ -149,17 +155,28 @@ fn add_layer_parts(pkg: &mut Package, tree: &LayerTree) -> Result<(), AifError> 
         let meta_path = parts::layer_meta_xml(&layer.id);
         set_part(pkg, &meta_path, meta_bytes, "application/xml")?;
 
-        if let LayerContent::Pixel(ref px) = layer.content {
-            for (coord, tile_data) in px.tiles.dirty_coords().collect::<Vec<_>>().into_iter()
-                .filter_map(|c| px.tiles.get(c).map(|t| (c, t)))
-            {
-                if tile_data.is_fully_transparent() {
-                    continue; // sparse tile — omit per §4.3
+        match layer.content {
+            LayerContent::Pixel(ref px) => {
+                for (coord, tile_data) in px.tiles.dirty_coords().collect::<Vec<_>>().into_iter()
+                    .filter_map(|c| px.tiles.get(c).map(|t| (c, t)))
+                {
+                    if tile_data.is_fully_transparent() {
+                        continue; // sparse tile — omit per §4.3
+                    }
+                    let exr_bytes = write_tile_exr(tile_data, layer.id, coord.tx, coord.ty)?;
+                    let tile_path = parts::layer_tile_exr(&layer.id, coord.tx, coord.ty);
+                    set_part(pkg, &tile_path, exr_bytes, parts::CT_EXR)?;
                 }
-                let exr_bytes = write_tile_exr(tile_data, layer.id, coord.tx, coord.ty)?;
-                let tile_path = parts::layer_tile_exr(&layer.id, coord.tx, coord.ty);
-                set_part(pkg, &tile_path, exr_bytes, parts::CT_EXR)?;
             }
+            // §4.10: vector layers have no tile directory; geometry goes to a
+            // single `paths.bin`. Written even when empty so the part's absence
+            // stays an unambiguous signal on read.
+            LayerContent::Vector(ref vl) => {
+                let bytes = write_path_store(vl);
+                let path = parts::layer_paths_bin(&layer.id);
+                set_part(pkg, &path, bytes, parts::CT_BIN)?;
+            }
+            _ => {}
         }
     }
     Ok(())

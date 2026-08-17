@@ -130,3 +130,54 @@ fn round_trips_embedded_raster() {
     let px = layer_to_rgba8(layer).expect("pixels");
     assert!(px.rgba[0] > 200 && px.rgba[1] < 50, "top-left pixel red");
 }
+
+// ── SVG → AIF → SVG, through the native format (SPEC.md §4.10) ────────────────
+
+/// An SVG imported into Iris must survive being saved as `.aif` and reopened.
+///
+/// Before `paths.bin` existed, `AifWriter` recorded `type="vector"` but no
+/// geometry and the reader rebuilt such layers as empty groups, so this whole
+/// pipeline silently discarded the artwork.
+#[test]
+fn svg_import_survives_aif_roundtrip() {
+    use std::io::{Cursor, Seek, SeekFrom};
+
+    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80">
+        <path d="M 10 10 L 110 10 L 60 70 Z" fill="#ff8000" stroke="#000000" stroke-width="2"/>
+        <rect x="20" y="20" width="40" height="30" fill="#0080ff"/>
+    </svg>"##;
+
+    let imported = SvgReader::from_str(SVG).expect("SVG must parse");
+    let objects_before: usize = imported
+        .layers
+        .iter_depth_first()
+        .filter_map(|l| match &l.content {
+            LayerContent::Vector(v) => Some(v.objects.len()),
+            _ => None,
+        })
+        .sum();
+    assert!(objects_before > 0, "fixture must import at least one path object");
+
+    let mut buf = Cursor::new(Vec::new());
+    iris_aif::AifWriter::write(&imported, &mut buf, &iris_aif::WriteOptions::default())
+        .expect("write .aif");
+    buf.seek(SeekFrom::Start(0)).expect("rewind");
+    let reopened = iris_aif::AifReader::open(buf).expect("read .aif");
+
+    let objects_after: usize = reopened
+        .layers
+        .iter_depth_first()
+        .filter_map(|l| match &l.content {
+            LayerContent::Vector(v) => Some(v.objects.len()),
+            _ => None,
+        })
+        .sum();
+    assert_eq!(
+        objects_before, objects_after,
+        "vector geometry must survive the .aif round-trip"
+    );
+
+    // And the reopened document must still serialise back to SVG with paths.
+    let svg_out = SvgWriter::to_string(&reopened).expect("write SVG");
+    assert!(svg_out.contains("<path"), "reopened document must still emit paths");
+}

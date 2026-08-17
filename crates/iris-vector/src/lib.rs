@@ -23,4 +23,4 @@ pub use stroke::{FillRule, LineCap, LineJoin, StrokePaint};
 
 // Re-export the kurbo geometry types adapters need so they can depend on
 // iris-vector alone for the vector model.
-pub use kurbo::{Affine, BezPath, Point};
+pub use kurbo::{Affine, BezPath, PathEl, Point};

@@ -23,11 +23,12 @@ use crate::{
     error::AifError,
     meta::{parse_layer_meta, spec_to_layer},
     parts,
+    paths::read_path_store,
     tile::read_tile_exr,
     xml::{read_document_xml, read_metadata_xml, LayerTreeEntry},
     FileAccessToken,
 };
-use iris_pixel::{LayerContent, LayerTree, PixelLayer, TileCoord, TILE_SIZE};
+use iris_pixel::{LayerContent, LayerTree, PixelLayer, TileCoord, VectorLayer, TILE_SIZE};
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -99,15 +100,35 @@ fn load_layers(
         let spec = parse_layer_meta(meta_bytes, entry.id)?;
         let mut layer = spec_to_layer(spec);
 
-        // Load EXR tiles for pixel layers.
-        if let LayerContent::Pixel(ref mut px) = layer.content {
-            load_pixel_tiles(pkg, &entry.id, px)?;
+        match layer.content {
+            // Load EXR tiles for pixel layers.
+            LayerContent::Pixel(ref mut px) => load_pixel_tiles(pkg, &entry.id, px)?,
+            // Load FlatBuffers geometry for vector layers (§4.10).
+            LayerContent::Vector(ref mut vl) => *vl = load_path_store(pkg, entry.id)?,
+            _ => {}
         }
 
         tree.add_layer(None, entry.order as usize, layer)
             .map_err(|_| AifError::MissingLayerMeta { layer_id: entry.id })?;
     }
     Ok(())
+}
+
+/// Load a vector layer's `paths.bin` (§4.10).
+///
+/// A vector layer's entire content lives in this part, so its absence is data
+/// loss rather than an empty layer — §4.1 rule 2 requires failing loudly rather
+/// than silently producing a layer with no geometry.
+fn load_path_store(pkg: &Package, layer_id: Uuid) -> Result<VectorLayer, AifError> {
+    let path = parts::layer_paths_bin(&layer_id);
+    let part_name = make_part_name(&path)?;
+    let part = pkg
+        .part(&part_name)
+        .ok_or_else(|| AifError::MissingRequiredPart(path.clone()))?;
+    // AUDIT: SPEC.md §4.6 defines no colorSpace attribute for vector layers, so
+    // there is nothing here to cross-check against PathStore.colorSpace. See the
+    // note on `read_path_store`.
+    read_path_store(&part.bytes, layer_id, None)
 }
 
 fn load_pixel_tiles(

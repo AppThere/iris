@@ -34,6 +34,7 @@ pub mod reader;
 pub mod writer;
 mod import;
 mod export;
+pub(crate) mod paths;
 
 // ── Primary type re-exports ───────────────────────────────────────────────────
 
