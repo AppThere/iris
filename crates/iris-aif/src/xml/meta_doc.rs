@@ -74,8 +74,14 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
                 current_tag = Some(local_name(e));
             }
             Ok(Event::Text(ref t)) => {
-                let text = t
-                    .unescape()
+                // quick-xml 0.41 split `BytesText::unescape()` into a decode
+                // step (charset -> str) plus a separate entity-unescape step;
+                // this reproduces the old method's decode-then-unescape behaviour.
+                let decoded = t.decode().map_err(|e| AifError::XmlParse {
+                    part: part.into(),
+                    message: e.to_string(),
+                })?;
+                let text = quick_xml::escape::unescape(&decoded)
                     .map_err(|e| AifError::XmlParse {
                         part: part.into(),
                         message: e.to_string(),
