@@ -56,10 +56,9 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
     }
     let part = crate::parts::METADATA_XML;
     let mut reader = Reader::from_reader(bytes);
-    reader.config_mut().trim_text(true);
-
     let mut meta = DocumentMetadata::default();
     let mut current_tag: Option<String> = None;
+    let mut buf = String::new();
 
     loop {
         match reader.read_event() {
@@ -71,33 +70,58 @@ pub(crate) fn read_metadata_xml(bytes: &[u8]) -> Result<DocumentMetadata, AifErr
             }
             Ok(Event::Eof) => break,
             Ok(Event::Start(ref e)) => {
+                buf.clear();
                 current_tag = Some(local_name(e));
             }
+            // COMPAT(quick-xml-0.41): entity/character refs no longer fold into
+            // `Event::Text`; they arrive as `Event::GeneralRef`, so text is
+            // accumulated across both and assigned at the closing tag.
             Ok(Event::Text(ref t)) => {
-                let text = t
-                    .unescape()
-                    .map_err(|e| AifError::XmlParse {
-                        part: part.into(),
-                        message: e.to_string(),
-                    })?
-                    .into_owned();
-                if !text.trim().is_empty() {
-                    match current_tag.as_deref() {
-                        Some("Title") => meta.title = Some(text),
-                        Some("Author") => meta.author = Some(text),
-                        Some("Description") => meta.description = Some(text),
-                        Some("Keywords") => meta.keywords = Some(text),
-                        _ => {}
+                let decoded = t.decode().map_err(|e| xml_err(part, &e))?;
+                let text = quick_xml::escape::unescape(&decoded).map_err(|e| xml_err(part, &e))?;
+                buf.push_str(&text);
+            }
+            Ok(Event::GeneralRef(ref r)) => {
+                if let Some(ch) = r.resolve_char_ref().map_err(|e| xml_err(part, &e))? {
+                    buf.push(ch);
+                } else {
+                    let name = r.decode().map_err(|e| xml_err(part, &e))?;
+                    match quick_xml::escape::resolve_predefined_entity(&name) {
+                        Some(v) => buf.push_str(v),
+                        None => {
+                            buf.push('&');
+                            buf.push_str(&name);
+                            buf.push(';');
+                        }
                     }
                 }
             }
             Ok(Event::End(_)) => {
+                let text = buf.trim();
+                if !text.is_empty() {
+                    let text = Some(text.to_owned());
+                    match current_tag.as_deref() {
+                        Some("Title") => meta.title = text,
+                        Some("Author") => meta.author = text,
+                        Some("Description") => meta.description = text,
+                        Some("Keywords") => meta.keywords = text,
+                        _ => {}
+                    }
+                }
+                buf.clear();
                 current_tag = None;
             }
             Ok(_) => {}
         }
     }
     Ok(meta)
+}
+
+fn xml_err(part: &str, e: &dyn std::fmt::Display) -> AifError {
+    AifError::XmlParse {
+        part: part.into(),
+        message: e.to_string(),
+    }
 }
 
 // ── Write ─────────────────────────────────────────────────────────────────────
@@ -143,6 +167,13 @@ pub(crate) fn write_metadata_xml(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entities_survive_read() {
+        let xml = b"<m><Title> Tom &amp; Jerry &#65; </Title></m>";
+        let meta = read_metadata_xml(xml).expect("parse");
+        assert_eq!(meta.title.as_deref(), Some("Tom & Jerry A"));
+    }
 
     #[test]
     fn round_trip_metadata() {

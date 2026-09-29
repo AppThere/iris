@@ -30,10 +30,12 @@ pub(crate) fn required_attr(
         let local = attr.key.local_name();
         let key = std::str::from_utf8(local.as_ref()).unwrap_or("");
         if key == name {
-            let val = attr.unescape_value().map_err(|err| AifError::XmlParse {
-                part: part.into(),
-                message: err.to_string(),
-            })?;
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(|err| AifError::XmlParse {
+                    part: part.into(),
+                    message: err.to_string(),
+                })?;
             return Ok(val.into_owned());
         }
     }
@@ -57,10 +59,12 @@ pub(crate) fn optional_attr(
         let local = attr.key.local_name();
         let key = std::str::from_utf8(local.as_ref()).unwrap_or("");
         if key == name {
-            let val = attr.unescape_value().map_err(|err| AifError::XmlParse {
-                part: part.into(),
-                message: err.to_string(),
-            })?;
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(|err| AifError::XmlParse {
+                    part: part.into(),
+                    message: err.to_string(),
+                })?;
             return Ok(Some(val.into_owned()));
         }
     }
